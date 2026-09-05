@@ -1,0 +1,17 @@
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.iml
+.idea/
+keystore.properties
+*.jks
+*.keystore
+*.war
+*.nar
+*.ear
+*.rar
+*.log
