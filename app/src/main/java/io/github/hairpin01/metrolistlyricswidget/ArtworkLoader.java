@@ -30,6 +30,9 @@ final class ArtworkLoader {
     private static final int WIDTH = 480;
     private static final int HEIGHT = 270;
     private static final int COVER_SIZE = 240;
+    // Matches the 12dp/52dp ratio used by widget_cover_placeholder.xml so the
+    // real artwork and the placeholder read as the same rounded shape.
+    private static final float COVER_CORNER_RADIUS = 56f;
     private static final int MAX_DOWNLOAD = 6 * 1024 * 1024;
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2);
     private static final Set<String> RUNNING = Collections.synchronizedSet(new HashSet<String>());
@@ -119,10 +122,29 @@ final class ArtworkLoader {
         int left = (source.getWidth() - side) / 2;
         int top = (source.getHeight() - side) / 2;
         Bitmap center = Bitmap.createBitmap(source, left, top, side, side);
-        Bitmap result = center.getWidth() == COVER_SIZE && center.getHeight() == COVER_SIZE
+        Bitmap scaled = center.getWidth() == COVER_SIZE && center.getHeight() == COVER_SIZE
                 ? center
                 : Bitmap.createScaledBitmap(center, COVER_SIZE, COVER_SIZE, true);
-        if (result != center) center.recycle();
+        if (scaled != center) center.recycle();
+        Bitmap rounded = roundCorners(scaled, COVER_CORNER_RADIUS);
+        if (rounded != scaled) scaled.recycle();
+        return rounded;
+    }
+
+    // Clips a bitmap to rounded-rect corners. Needed because RemoteViews sets the
+    // cover via setImageViewBitmap (plain ImageView), so the shape has to be baked
+    // into the pixels themselves rather than relying on a view-level outline/clip.
+    private static Bitmap roundCorners(Bitmap source, float radius) {
+        if (source == null) return null;
+        int width = source.getWidth();
+        int height = source.getHeight();
+        Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(result);
+        Path path = new Path();
+        path.addRoundRect(new RectF(0f, 0f, width, height), radius, radius, Path.Direction.CW);
+        canvas.clipPath(path);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        canvas.drawBitmap(source, 0f, 0f, paint);
         return result;
     }
 
