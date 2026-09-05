@@ -23,86 +23,193 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:baselineAligned="false"
         android:gravity="center_vertical"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:paddingLeft="14dp"
         android:paddingTop="8dp"
         android:paddingRight="14dp"
         android:paddingBottom="8dp">
 
+        <ImageView
+            android:id="@+id/widget_cover"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginRight="12dp"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_cover_placeholder"
+            android:visibility="gone" />
+
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/widget_title"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:fontFamily="sans-serif-medium"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:text="MetroList"
-                android:textColor="#FFD0BCFF"
-                android:textSize="12sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/widget_status"
-                android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/widget_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="MetroList"
+                    android:textColor="#FFD0BCFF"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/widget_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:maxWidth="138dp"
+                    android:text="ожидание"
+                    android:textColor="#C8FFFFFF"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <ViewFlipper
+                android:id="@+id/widget_flipper_previous"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:maxWidth="138dp"
-                android:text="ожидание"
-                android:textColor="#C8FFFFFF"
-                android:textSize="10sp" />
+                android:layout_marginTop="4dp"
+                android:inAnimation="@anim/line_in"
+                android:outAnimation="@anim/line_out">
+
+                <TextView
+                    android:id="@+id/widget_previous_a"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="#9EFFFFFF"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/widget_previous_b"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="#9EFFFFFF"
+                    android:textSize="13sp" />
+            </ViewFlipper>
+
+            <ViewFlipper
+                android:id="@+id/widget_flipper_current"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:inAnimation="@anim/line_in"
+                android:outAnimation="@anim/line_out">
+
+                <TextView
+                    android:id="@+id/widget_current_a"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="2"
+                    android:text="Запусти MetroList"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="19sp" />
+
+                <TextView
+                    android:id="@+id/widget_current_b"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="2"
+                    android:text=""
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="19sp" />
+            </ViewFlipper>
+
+            <ViewFlipper
+                android:id="@+id/widget_flipper_next"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:inAnimation="@anim/line_in"
+                android:outAnimation="@anim/line_out">
+
+                <TextView
+                    android:id="@+id/widget_next_a"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="1"
+                    android:text="Здесь появится синхронный текст"
+                    android:textColor="#9EFFFFFF"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/widget_next_b"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="#9EFFFFFF"
+                    android:textSize="13sp" />
+            </ViewFlipper>
+
+            <FrameLayout
+                android:id="@+id/widget_progress_wrap"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/widget_progress_track"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:contentDescription="@null"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_progress_track" />
+
+                <ImageView
+                    android:id="@+id/widget_progress"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:contentDescription="@null"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_progress_bar" />
+            </FrameLayout>
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/widget_previous"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:includeFontPadding="false"
-            android:lineSpacingExtra="0dp"
-            android:lineSpacingMultiplier="0.94"
-            android:maxLines="1"
-            android:text=""
-            android:textColor="#9EFFFFFF"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/widget_current"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
-            android:includeFontPadding="false"
-            android:lineSpacingExtra="0dp"
-            android:lineSpacingMultiplier="0.94"
-            android:maxLines="2"
-            android:text="Запусти MetroList"
-            android:textColor="#FFFFFFFF"
-            android:textSize="19sp" />
-
-        <TextView
-            android:id="@+id/widget_next"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:includeFontPadding="false"
-            android:lineSpacingExtra="0dp"
-            android:lineSpacingMultiplier="0.94"
-            android:maxLines="1"
-            android:text="Здесь появится синхронный текст"
-            android:textColor="#9EFFFFFF"
-            android:textSize="13sp" />
     </LinearLayout>
 </FrameLayout>

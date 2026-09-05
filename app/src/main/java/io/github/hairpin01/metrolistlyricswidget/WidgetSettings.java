@@ -24,6 +24,9 @@ final class WidgetSettings {
     private static final String KEY_CUSTOM_FOREGROUND = "custom_foreground";
     private static final String KEY_CUSTOM_ACCENT = "custom_accent";
     private static final String KEY_IMAGE_URI = "custom_image_uri";
+    private static final String KEY_SHOW_COVER = "show_cover";
+    private static final String KEY_SHOW_PROGRESS = "show_progress";
+    private static final String KEY_ANIMATE_LINES = "animate_lines";
 
     private WidgetSettings() {}
 
@@ -98,6 +101,30 @@ final class WidgetSettings {
 
     static void setImageUri(Context context, String value) {
         prefs(context).edit().putString(KEY_IMAGE_URI, value == null ? "" : value).apply();
+    }
+
+    static boolean showCover(Context context) {
+        return prefs(context).getBoolean(KEY_SHOW_COVER, true);
+    }
+
+    static void setShowCover(Context context, boolean value) {
+        prefs(context).edit().putBoolean(KEY_SHOW_COVER, value).apply();
+    }
+
+    static boolean showProgress(Context context) {
+        return prefs(context).getBoolean(KEY_SHOW_PROGRESS, true);
+    }
+
+    static void setShowProgress(Context context, boolean value) {
+        prefs(context).edit().putBoolean(KEY_SHOW_PROGRESS, value).apply();
+    }
+
+    static boolean animateLines(Context context) {
+        return prefs(context).getBoolean(KEY_ANIMATE_LINES, true);
+    }
+
+    static void setAnimateLines(Context context, boolean value) {
+        prefs(context).edit().putBoolean(KEY_ANIMATE_LINES, value).apply();
     }
 
     static void reset(Context context) {

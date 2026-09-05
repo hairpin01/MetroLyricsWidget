@@ -13,6 +13,8 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -78,6 +80,7 @@ public class MainActivity extends Activity {
         addColorSettings();
         addBackgroundSettings();
         addSizingSettings();
+        addElementsSettings();
         addActions();
 
         setContentView(scroll);
@@ -187,6 +190,47 @@ public class MainActivity extends Activity {
                 13,
                 palette.secondary);
         root.addView(note, matchWrap());
+    }
+
+    private void addElementsSettings() {
+        root.addView(section("Элементы"), sectionParams());
+        addCheck("Показывать обложку трека", WidgetSettings.showCover(this), new CheckToggler() {
+            @Override public void toggle(boolean value) {
+                WidgetSettings.setShowCover(MainActivity.this, value);
+            }
+        });
+        addCheck("Показывать прогресс трека", WidgetSettings.showProgress(this), new CheckToggler() {
+            @Override public void toggle(boolean value) {
+                WidgetSettings.setShowProgress(MainActivity.this, value);
+            }
+        });
+        addCheck("Анимировать смену строк", WidgetSettings.animateLines(this), new CheckToggler() {
+            @Override public void toggle(boolean value) {
+                WidgetSettings.setAnimateLines(MainActivity.this, value);
+            }
+        });
+    }
+
+    private void addCheck(String label, boolean checked, final CheckToggler toggler) {
+        CheckBox box = new CheckBox(this);
+        box.setText(label);
+        box.setTextSize(14);
+        box.setTextColor(palette.foreground);
+        box.setButtonTintList(ColorStateList.valueOf(palette.accent));
+        box.setChecked(checked);
+        box.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton button, boolean value) {
+                toggler.toggle(value);
+                refreshWidgets();
+            }
+        });
+        LinearLayout.LayoutParams params = matchWrap();
+        params.setMargins(0, dp(6), 0, 0);
+        root.addView(box, params);
+    }
+
+    private interface CheckToggler {
+        void toggle(boolean value);
     }
 
     private void addActions() {
@@ -329,6 +373,8 @@ public class MainActivity extends Activity {
         intent.putExtra(Constants.EXTRA_STATUS, "играет · демо");
         intent.putExtra(Constants.EXTRA_PROVIDER, "демо");
         intent.putExtra(Constants.EXTRA_PLAYING, true);
+        intent.putExtra(Constants.EXTRA_POSITION, 42_000L);
+        intent.putExtra(Constants.EXTRA_DURATION, 213_000L);
         sendBroadcast(intent);
         Toast.makeText(this, "Демо отправлено в виджет", Toast.LENGTH_SHORT).show();
     }

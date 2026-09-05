@@ -76,6 +76,9 @@ final class MetroBridge implements Runnable {
     private String currentTitle = "MetroList";
     private String currentArtist = "";
     private String currentArtwork = "";
+    private String currentPrevious = "";
+    private String currentLineText = "";
+    private String currentNextText = "";
     private String lastPayload = "";
     private boolean dbErrorLogged;
 
@@ -123,17 +126,20 @@ final class MetroBridge implements Runnable {
             }
 
             TrackInfo info = readTrackInfo(mediaItem, trackId);
+            long position = number(call(player, "getCurrentPosition"), 0L);
+            long duration = number(call(player, "getDuration"), 0L);
             if (!trackId.equals(currentTrackId)) {
-                beginTrack(trackId, info, playing);
+                beginTrack(trackId, info, playing, position, duration);
             } else {
                 if (info.title.length() != 0) currentTitle = info.title;
                 if (info.artist.length() != 0) currentArtist = info.artist;
                 if (info.artwork.length() != 0) currentArtwork = info.artwork;
             }
 
-            long position = number(call(player, "getCurrentPosition"), 0L);
             if (trackId.equals(lyricsTrackId) && !lyricLines.isEmpty()) {
-                emitCurrentLine(position, playing, false);
+                emitCurrentLine(position, duration, playing, false);
+            } else {
+                emitHeartbeat(position, duration, playing);
             }
         } catch (Throwable error) {
             log("poll failed: " + error);
@@ -157,7 +163,7 @@ final class MetroBridge implements Runnable {
         if (loaderTask != null) loaderTask.cancel(true);
     }
 
-    private void beginTrack(final String trackId, TrackInfo info, boolean playing) {
+    private void beginTrack(final String trackId, TrackInfo info, boolean playing, long position, long duration) {
         currentTrackId = trackId;
         currentTitle = info.title.length() == 0 ? "MetroList" : info.title;
         currentArtist = info.artist;
@@ -169,7 +175,7 @@ final class MetroBridge implements Runnable {
         lastPayload = "";
 
         if (loaderTask != null) loaderTask.cancel(true);
-        sendSnapshot("", "Ищу синхронный текст…", "", "поиск текста", "", playing, 0L, true);
+        sendSnapshot("", "Ищу синхронный текст…", "", "поиск текста", "", playing, position, duration, true);
         loaderTask = worker.submit(new Runnable() {
             @Override public void run() { loadLyrics(trackId); }
         });
@@ -202,10 +208,24 @@ final class MetroBridge implements Runnable {
                 @Override public void run() {
                     if (!stopped && trackId.equals(currentTrackId) && lyricLines.isEmpty()) {
                         boolean playing = isPlayerPlaying();
-                        sendSnapshot("", "Нет синхронизированного текста", "", "нет текста", "", playing, 0L, true);
+                        long[] timeline = playerTimeline();
+                        sendSnapshot("", "Нет синхронизированного текста", "", "нет текста", "",
+                                playing, timeline[0], timeline[1], true);
                     }
                 }
             });
+        }
+    }
+
+    private long[] playerTimeline() {
+        try {
+            Object player = getField(service, "player");
+            return new long[]{
+                    number(call(player, "getCurrentPosition"), 0L),
+                    number(call(player, "getDuration"), 0L)
+            };
+        } catch (Throwable ignored) {
+            return new long[]{0L, 0L};
         }
     }
 
@@ -335,7 +355,9 @@ final class MetroBridge implements Runnable {
                 @Override public void run() {
                     if (trackId.equals(currentTrackId)) {
                         boolean playing = isPlayerPlaying();
-                        sendSnapshot("", "Текст найден, но без таймкодов", "", "нет синхронизации", lyricProvider, playing, 0L, true);
+                        long[] timeline = playerTimeline();
+                        sendSnapshot("", "Текст найден, но без таймкодов", "", "нет синхронизации", lyricProvider,
+                                playing, timeline[0], timeline[1], true);
                     }
                 }
             });
@@ -431,7 +453,7 @@ final class MetroBridge implements Runnable {
         return merged;
     }
 
-    private void emitCurrentLine(long positionMs, boolean playing, boolean force) {
+    private void emitCurrentLine(long positionMs, long durationMs, boolean playing, boolean force) {
         List<LyricLine> lines = lyricLines;
         if (lines.isEmpty()) return;
         long effectivePosition = positionMs + lyricsOffsetMs + 100L;
@@ -453,11 +475,20 @@ final class MetroBridge implements Runnable {
         String next = index + 1 < lines.size() ? lines.get(index + 1).text : "";
         String status = playing ? "играет" : "пауза";
         if (lyricProvider.length() != 0) status += " · " + lyricProvider;
-        sendSnapshot(previous, current, next, status, lyricProvider, playing, positionMs, force);
+        sendSnapshot(previous, current, next, status, lyricProvider, playing, positionMs, durationMs, force);
+    }
+
+    // Periodic snapshot for tracks without synced lyrics: keeps the progress bar
+    // and status fresh roughly once per second while text stays unchanged.
+    private void emitHeartbeat(long positionMs, long durationMs, boolean playing) {
+        String status = playing ? "играет" : "пауза";
+        if (lyricProvider.length() != 0) status += " · " + lyricProvider;
+        sendSnapshot(currentPrevious, currentLineText, currentNextText, status, lyricProvider,
+                playing, positionMs, durationMs, false);
     }
 
     private void sendIdle(String status) {
-        sendSnapshot("", "Музыка не играет", "", status, "", false, 0L, false);
+        sendSnapshot("", "Музыка не играет", "", status, "", false, 0L, 0L, false);
     }
 
     private void sendSnapshot(
@@ -468,12 +499,20 @@ final class MetroBridge implements Runnable {
             String provider,
             boolean playing,
             long position,
+            long duration,
             boolean force
     ) {
+        // Position must not be fully deduplicated: the widget progress bar is driven
+        // by these snapshots, so the payload carries a one-second quantized position
+        // to broadcast roughly once per second while everything else stays unchanged.
         String payload = currentTrackId + '\u0001' + currentTitle + '\u0001' + currentArtist + '\u0001' + currentArtwork + '\u0001' +
-                previous + '\u0001' + current + '\u0001' + next + '\u0001' + status + '\u0001' + provider + '\u0001' + playing;
+                previous + '\u0001' + current + '\u0001' + next + '\u0001' + status + '\u0001' + provider + '\u0001' + playing +
+                '\u0001' + (position / 1000L);
         if (!force && payload.equals(lastPayload)) return;
         lastPayload = payload;
+        currentPrevious = previous;
+        currentLineText = current;
+        currentNextText = next;
         try {
             Intent intent = new Intent(Constants.ACTION_UPDATE);
             intent.setComponent(new ComponentName(
@@ -492,6 +531,7 @@ final class MetroBridge implements Runnable {
             intent.putExtra(Constants.EXTRA_PROVIDER, provider);
             intent.putExtra(Constants.EXTRA_PLAYING, playing);
             intent.putExtra(Constants.EXTRA_POSITION, position);
+            intent.putExtra(Constants.EXTRA_DURATION, duration);
             context.sendBroadcast(intent);
         } catch (Throwable error) {
             log("widget broadcast failed: " + error);

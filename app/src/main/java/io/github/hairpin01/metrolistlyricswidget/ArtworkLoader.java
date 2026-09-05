@@ -29,6 +29,7 @@ final class ArtworkLoader {
     // Keeps RemoteViews safely below Android's Binder transaction limit.
     private static final int WIDTH = 480;
     private static final int HEIGHT = 270;
+    private static final int COVER_SIZE = 240;
     private static final int MAX_DOWNLOAD = 6 * 1024 * 1024;
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2);
     private static final Set<String> RUNNING = Collections.synchronizedSet(new HashSet<String>());
@@ -36,6 +37,8 @@ final class ArtworkLoader {
 
     private static String artworkMemoryKey = "";
     private static Bitmap artworkMemoryBitmap;
+    private static String coverMemoryKey = "";
+    private static Bitmap coverMemoryBitmap;
     private static String customMemoryKey = "";
     private static Bitmap customMemoryBitmap;
 
@@ -53,7 +56,9 @@ final class ArtworkLoader {
             }
             File file = artworkFile(context, key);
             if (file != null && file.isFile()) {
-                Bitmap bitmap = decodeCropped(file);
+                Bitmap bitmap = decode(file, new Crop() {
+                    @Override public Bitmap apply(Bitmap source) { return crop(source, WIDTH, HEIGHT); }
+                });
                 if (bitmap != null) {
                     synchronized (ArtworkLoader.class) {
                         artworkMemoryKey = key;
@@ -64,6 +69,61 @@ final class ArtworkLoader {
             }
         }
         return null;
+    }
+
+    // Square cover art shown in the widget next to the lyrics. Uses the same
+    // downloaded artwork cache as the background mode but renders a square crop.
+    static Bitmap cover(Context context, String trackId, String artworkUrl) {
+        String key = cacheKey(trackId, artworkUrl);
+        if (key.length() == 0) return null;
+        synchronized (ArtworkLoader.class) {
+            if (key.equals(coverMemoryKey) && coverMemoryBitmap != null
+                    && !coverMemoryBitmap.isRecycled()) return coverMemoryBitmap;
+        }
+        File file = artworkFile(context, key);
+        if (file == null || !file.isFile()) return null;
+        Bitmap square = decode(file, new Crop() {
+            @Override public Bitmap apply(Bitmap source) { return cropSquare(source); }
+        });
+        if (square != null) {
+            synchronized (ArtworkLoader.class) {
+                coverMemoryKey = key;
+                coverMemoryBitmap = square;
+            }
+        }
+        return square;
+    }
+
+    private interface Crop {
+        Bitmap apply(Bitmap source);
+    }
+
+    private static Bitmap decode(File file, Crop crop) {
+        InputStream input = null;
+        try {
+            input = new FileInputStream(file);
+            Bitmap source = BitmapFactory.decodeStream(input);
+            Bitmap result = crop.apply(source);
+            if (source != null && source != result) source.recycle();
+            return result;
+        } catch (Throwable ignored) {
+            return null;
+        } finally {
+            close(input);
+        }
+    }
+
+    private static Bitmap cropSquare(Bitmap source) {
+        if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) return null;
+        int side = Math.min(source.getWidth(), source.getHeight());
+        int left = (source.getWidth() - side) / 2;
+        int top = (source.getHeight() - side) / 2;
+        Bitmap center = Bitmap.createBitmap(source, left, top, side, side);
+        Bitmap result = center.getWidth() == COVER_SIZE && center.getHeight() == COVER_SIZE
+                ? center
+                : Bitmap.createScaledBitmap(center, COVER_SIZE, COVER_SIZE, true);
+        if (result != center) center.recycle();
+        return result;
     }
 
     static void ensureAsync(Context context, String trackId, String artworkUrl, Runnable finished) {
@@ -108,7 +168,7 @@ final class ArtworkLoader {
         try {
             input = context.getContentResolver().openInputStream(Uri.parse(uriString));
             Bitmap source = BitmapFactory.decodeStream(input);
-            Bitmap result = crop(source);
+            Bitmap result = crop(source, WIDTH, HEIGHT);
             if (source != null && source != result) source.recycle();
             synchronized (ArtworkLoader.class) {
                 customMemoryKey = uriString;
@@ -122,33 +182,18 @@ final class ArtworkLoader {
         }
     }
 
-    private static Bitmap decodeCropped(File file) {
-        InputStream input = null;
-        try {
-            input = new FileInputStream(file);
-            Bitmap source = BitmapFactory.decodeStream(input);
-            Bitmap result = crop(source);
-            if (source != null && source != result) source.recycle();
-            return result;
-        } catch (Throwable ignored) {
-            return null;
-        } finally {
-            close(input);
-        }
-    }
-
-    private static Bitmap crop(Bitmap source) {
+    private static Bitmap crop(Bitmap source, int width, int height) {
         if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) return null;
-        Bitmap result = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888);
+        Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(result);
         Path rounded = new Path();
-        rounded.addRoundRect(new RectF(0f, 0f, WIDTH, HEIGHT), 36f, 36f, Path.Direction.CW);
+        rounded.addRoundRect(new RectF(0f, 0f, width, height), 36f, 36f, Path.Direction.CW);
         canvas.clipPath(rounded);
-        float scale = Math.max(WIDTH / (float) source.getWidth(), HEIGHT / (float) source.getHeight());
+        float scale = Math.max(width / (float) source.getWidth(), height / (float) source.getHeight());
         int drawWidth = Math.round(source.getWidth() * scale);
         int drawHeight = Math.round(source.getHeight() * scale);
-        int left = (WIDTH - drawWidth) / 2;
-        int top = (HEIGHT - drawHeight) / 2;
+        int left = (width - drawWidth) / 2;
+        int top = (height - drawHeight) / 2;
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         canvas.drawBitmap(source, null, new Rect(left, top, left + drawWidth, top + drawHeight), paint);
         return result;
@@ -178,18 +223,31 @@ final class ArtworkLoader {
             }
             byte[] bytes = output.toByteArray();
             Bitmap source = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-            Bitmap result = crop(source);
-            if (source != null && source != result) source.recycle();
-            if (result == null) return;
+            if (source == null) return;
+            // Cap cached artwork so the disk cache stays compact; still plenty for
+            // both the 480x270 background and the 240x240 cover crops.
+            if (source.getWidth() > 960 || source.getHeight() > 960) {
+                float scale = Math.min(960f / source.getWidth(), 960f / source.getHeight());
+                Bitmap scaled = Bitmap.createScaledBitmap(
+                        source,
+                        Math.max(1, Math.round(source.getWidth() * scale)),
+                        Math.max(1, Math.round(source.getHeight() * scale)),
+                        true);
+                source.recycle();
+                source = scaled;
+                if (source == null) return;
+            }
+            // Cache stores the untouched artwork so both the wide background crop
+            // and the square cover crop can be produced from the same file.
             File dir = target.getParentFile();
             if (dir != null && !dir.exists()) dir.mkdirs();
             File temp = new File(target.getAbsolutePath() + ".tmp");
             FileOutputStream fileOutput = new FileOutputStream(temp);
             try {
-                result.compress(Bitmap.CompressFormat.JPEG, 88, fileOutput);
+                source.compress(Bitmap.CompressFormat.JPEG, 88, fileOutput);
             } finally {
                 fileOutput.close();
-                result.recycle();
+                source.recycle();
             }
             if (!temp.renameTo(target)) {
                 target.delete();

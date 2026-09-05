@@ -36,6 +36,9 @@ final class WidgetState {
         if (intent.hasExtra(Constants.EXTRA_POSITION)) {
             editor.putLong(Constants.EXTRA_POSITION, intent.getLongExtra(Constants.EXTRA_POSITION, 0L));
         }
+        if (intent.hasExtra(Constants.EXTRA_DURATION)) {
+            editor.putLong(Constants.EXTRA_DURATION, intent.getLongExtra(Constants.EXTRA_DURATION, 0L));
+        }
         editor.putLong("updated_at", System.currentTimeMillis());
         editor.apply();
     }
@@ -46,6 +49,17 @@ final class WidgetState {
 
     static void clear(Context context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
+    }
+
+    static void clearLineState(Context context, int widgetId) {
+        SharedPreferences.Editor editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
+        editor.remove("line_previous_" + widgetId);
+        editor.remove("line_current_" + widgetId);
+        editor.remove("line_next_" + widgetId);
+        for (int slot = 0; slot < 3; slot++) {
+            editor.remove("line_child_" + slot + "_" + widgetId);
+        }
+        editor.apply();
     }
 
     static void updateAll(Context context) {
@@ -72,6 +86,8 @@ final class WidgetState {
         String status = clean(state.getString(Constants.EXTRA_STATUS, ""));
         String provider = clean(state.getString(Constants.EXTRA_PROVIDER, ""));
         boolean playing = state.getBoolean(Constants.EXTRA_PLAYING, false);
+        long position = state.getLong(Constants.EXTRA_POSITION, 0L);
+        long duration = state.getLong(Constants.EXTRA_DURATION, 0L);
         long updatedAt = state.getLong("updated_at", 0L);
 
         if (title.length() == 0) title = "MetroList Lyrics";
@@ -91,18 +107,59 @@ final class WidgetState {
 
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_lyrics);
         views.setTextViewText(R.id.widget_title, title);
-        views.setTextViewText(R.id.widget_previous, previous);
-        views.setTextViewText(R.id.widget_current, current);
-        views.setTextViewText(R.id.widget_next, next);
         views.setTextViewText(R.id.widget_status, status);
-        views.setViewVisibility(R.id.widget_previous, previous.length() == 0 ? View.GONE : View.VISIBLE);
-        views.setViewVisibility(R.id.widget_next, next.length() == 0 ? View.GONE : View.VISIBLE);
+
+        // Lyric lines: each slot is a ViewFlipper with two children. On a line change
+        // the fresh text is written into the hidden slot and the flipper switches —
+        // the launcher then plays in/out animations, producing a smooth transition.
+        LineState lineState = LineState.load(context, widgetId);
+        boolean changed = !lineState.matches(previous, current, next);
+        boolean animate = changed && WidgetSettings.animateLines(context);
+        setLine(views, lineState, LineState.SLOT_PREVIOUS,
+                R.id.widget_flipper_previous, R.id.widget_previous_a, R.id.widget_previous_b,
+                previous.length() == 0 ? " " : previous, changed, animate);
+        setLine(views, lineState, LineState.SLOT_CURRENT,
+                R.id.widget_flipper_current, R.id.widget_current_a, R.id.widget_current_b,
+                current, changed, animate);
+        setLine(views, lineState, LineState.SLOT_NEXT,
+                R.id.widget_flipper_next, R.id.widget_next_a, R.id.widget_next_b,
+                next.length() == 0 ? " " : next, changed, animate);
+        lineState.apply(previous, current, next);
+        lineState.save(context, widgetId);
+        views.setViewVisibility(R.id.widget_flipper_previous, previous.length() == 0 ? View.GONE : View.VISIBLE);
+        views.setViewVisibility(R.id.widget_flipper_next, next.length() == 0 ? View.GONE : View.VISIBLE);
 
         int currentSize = WidgetSettings.textSize(context);
         int sideSize = Math.max(11, currentSize - 6);
-        views.setTextViewTextSize(R.id.widget_current, TypedValue.COMPLEX_UNIT_SP, currentSize);
-        views.setTextViewTextSize(R.id.widget_previous, TypedValue.COMPLEX_UNIT_SP, sideSize);
-        views.setTextViewTextSize(R.id.widget_next, TypedValue.COMPLEX_UNIT_SP, sideSize);
+        views.setTextViewTextSize(R.id.widget_current_a, TypedValue.COMPLEX_UNIT_SP, currentSize);
+        views.setTextViewTextSize(R.id.widget_current_b, TypedValue.COMPLEX_UNIT_SP, currentSize);
+        views.setTextViewTextSize(R.id.widget_previous_a, TypedValue.COMPLEX_UNIT_SP, sideSize);
+        views.setTextViewTextSize(R.id.widget_previous_b, TypedValue.COMPLEX_UNIT_SP, sideSize);
+        views.setTextViewTextSize(R.id.widget_next_a, TypedValue.COMPLEX_UNIT_SP, sideSize);
+        views.setTextViewTextSize(R.id.widget_next_b, TypedValue.COMPLEX_UNIT_SP, sideSize);
+
+        // Album cover next to the lyrics: placeholder while loading, bitmap when cached.
+        boolean showCover = WidgetSettings.showCover(context) && trackId.length() != 0;
+        Bitmap cover = showCover ? ArtworkLoader.cover(context, trackId, artwork) : null;
+        views.setViewVisibility(R.id.widget_cover, showCover ? View.VISIBLE : View.GONE);
+        if (cover != null) {
+            views.setImageViewBitmap(R.id.widget_cover, cover);
+        } else {
+            views.setImageViewResource(R.id.widget_cover, R.drawable.widget_cover_placeholder);
+        }
+
+        // Progress bar: extrapolate position by wall clock since the last snapshot,
+        // polls arrive every ~220 ms but identical payloads are deduplicated upstream.
+        boolean showProgress = WidgetSettings.showProgress(context) && trackId.length() != 0 && duration > 0L;
+        views.setViewVisibility(R.id.widget_progress_wrap, showProgress ? View.VISIBLE : View.GONE);
+        if (showProgress) {
+            long elapsed = position;
+            if (playing) elapsed += Math.max(0L, System.currentTimeMillis() - updatedAt);
+            long clamped = Math.max(0L, Math.min(duration, elapsed));
+            // ClipDrawable levels span 0..10000, same scale as ProgressBar.
+            int level = (int) (10000L * clamped / duration);
+            views.setInt(R.id.widget_progress, "setImageLevel", level);
+        }
 
         int imageAlpha = Math.round(255f * opacity / 100f);
         if (imageBackground) {
@@ -116,9 +173,12 @@ final class WidgetState {
             int readableAccent = readableOnDark(palette.accent);
             views.setTextColor(R.id.widget_title, readableAccent);
             views.setTextColor(R.id.widget_status, Color.argb(210, 255, 255, 255));
-            views.setTextColor(R.id.widget_previous, Color.argb(158, 255, 255, 255));
-            views.setTextColor(R.id.widget_current, Color.WHITE);
-            views.setTextColor(R.id.widget_next, Color.argb(158, 255, 255, 255));
+            setLineColors(views, Color.argb(158, 255, 255, 255), Color.WHITE);
+            if (showProgress) {
+                views.setInt(R.id.widget_progress, "setColorFilter", readableOnDark(palette.accent));
+                views.setInt(R.id.widget_progress_track, "setColorFilter", Color.WHITE);
+                views.setInt(R.id.widget_progress_track, "setImageAlpha", 80);
+            }
         } else {
             views.setImageViewResource(R.id.widget_bg, R.drawable.widget_panel);
             views.setInt(R.id.widget_bg, "setColorFilter", palette.surface);
@@ -128,9 +188,12 @@ final class WidgetState {
 
             views.setTextColor(R.id.widget_title, palette.accent);
             views.setTextColor(R.id.widget_status, palette.secondary);
-            views.setTextColor(R.id.widget_previous, palette.muted);
-            views.setTextColor(R.id.widget_current, palette.foreground);
-            views.setTextColor(R.id.widget_next, palette.muted);
+            setLineColors(views, palette.muted, palette.foreground);
+            if (showProgress) {
+                views.setInt(R.id.widget_progress, "setColorFilter", palette.accent);
+                views.setInt(R.id.widget_progress_track, "setColorFilter", palette.foreground);
+                views.setInt(R.id.widget_progress_track, "setImageAlpha", 77);
+            }
         }
 
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(Constants.TARGET_PACKAGE);
@@ -145,8 +208,9 @@ final class WidgetState {
         views.setOnClickPendingIntent(R.id.widget_root, pending);
         manager.updateAppWidget(widgetId, views);
 
-        if (backgroundMode == WidgetSettings.BACKGROUND_ARTWORK && background == null
-                && (trackId.length() != 0 || artwork.length() != 0)) {
+        if ((trackId.length() != 0 || artwork.length() != 0)
+                && ((showCover && cover == null)
+                || (backgroundMode == WidgetSettings.BACKGROUND_ARTWORK && background == null))) {
             final Context app = context.getApplicationContext();
             ArtworkLoader.ensureAsync(app, trackId, artwork, new Runnable() {
                 @Override public void run() {
@@ -154,6 +218,37 @@ final class WidgetState {
                 }
             });
         }
+    }
+
+    // Writes the lyric text into the flipper slots. On an animated change the visible
+    // slot keeps the old text (it animates out) and the hidden slot receives the new
+    // line, then the flipper switches children so the host plays both animations.
+    // RemoteViews actions replay in order, so texts must be set before the flip.
+    private static void setLine(RemoteViews views, LineState state, int slot,
+                                int flipperId, int slotA, int slotB,
+                                String text, boolean changed, boolean animate) {
+        int shown = state.currentChild(slot);
+        int visible = shown == 0 ? slotA : slotB;
+        int hidden = shown == 0 ? slotB : slotA;
+        if (animate) {
+            int flipTo = state.nextChild(slot);
+            views.setTextViewText(visible, changed ? state.text(slot) : text);
+            views.setTextViewText(hidden, text);
+            views.setDisplayedChild(flipperId, flipTo);
+            state.advance(slot, flipTo);
+        } else {
+            views.setTextViewText(visible, text);
+            views.setTextViewText(hidden, text);
+        }
+    }
+
+    private static void setLineColors(RemoteViews views, int sideColor, int currentColor) {
+        views.setTextColor(R.id.widget_previous_a, sideColor);
+        views.setTextColor(R.id.widget_previous_b, sideColor);
+        views.setTextColor(R.id.widget_current_a, currentColor);
+        views.setTextColor(R.id.widget_current_b, currentColor);
+        views.setTextColor(R.id.widget_next_a, sideColor);
+        views.setTextColor(R.id.widget_next_b, sideColor);
     }
 
     private static String displayStatus(String trackId, String status, String provider,
@@ -177,5 +272,73 @@ final class WidgetState {
 
     private static String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    // Tracks which flipper child is displayed for each line slot of a widget, so the
+    // flip happens only when the lyric text actually changes. ViewFlipper.restart
+    // semantics: setDisplayedChild always replays the in/out animation pair, so an
+    // unconditional flip on every 220 ms refresh would keep the widget flickering.
+    private static final class LineState {
+        static final int SLOT_PREVIOUS = 0;
+        static final int SLOT_CURRENT = 1;
+        static final int SLOT_NEXT = 2;
+        private static final int SLOTS = 3;
+
+        private String previous;
+        private String current;
+        private String next;
+        private final int[] children = new int[SLOTS];
+
+        private LineState(SharedPreferences prefs, int widgetId) {
+            previous = clean(prefs.getString("line_previous_" + widgetId, null));
+            current = clean(prefs.getString("line_current_" + widgetId, null));
+            next = clean(prefs.getString("line_next_" + widgetId, null));
+            for (int slot = 0; slot < SLOTS; slot++) {
+                children[slot] = prefs.getInt("line_child_" + slot + "_" + widgetId, 0);
+            }
+        }
+
+        static LineState load(Context context, int widgetId) {
+            return new LineState(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE), widgetId);
+        }
+
+        boolean matches(String previous, String current, String next) {
+            return this.previous.equals(previous) && this.current.equals(current) && this.next.equals(next);
+        }
+
+        String text(int slot) {
+            if (slot == SLOT_PREVIOUS) return previous;
+            if (slot == SLOT_CURRENT) return current;
+            return next;
+        }
+
+        int currentChild(int slot) {
+            return children[slot];
+        }
+
+        int nextChild(int slot) {
+            return (children[slot] + 1) % 2;
+        }
+
+        void advance(int slot, int child) {
+            children[slot] = child;
+        }
+
+        void apply(String previous, String current, String next) {
+            this.previous = previous == null ? "" : previous;
+            this.current = current == null ? "" : current;
+            this.next = next == null ? "" : next;
+        }
+
+        void save(Context context, int widgetId) {
+            SharedPreferences.Editor editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
+            editor.putString("line_previous_" + widgetId, previous);
+            editor.putString("line_current_" + widgetId, current);
+            editor.putString("line_next_" + widgetId, next);
+            for (int slot = 0; slot < SLOTS; slot++) {
+                editor.putInt("line_child_" + slot + "_" + widgetId, children[slot]);
+            }
+            editor.apply();
+        }
     }
 }

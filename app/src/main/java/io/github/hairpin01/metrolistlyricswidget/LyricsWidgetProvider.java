@@ -12,6 +12,11 @@ public class LyricsWidgetProvider extends AppWidgetProvider {
     }
 
     @Override
+    public void onDeleted(Context context, int[] appWidgetIds) {
+        for (int id : appWidgetIds) WidgetState.clearLineState(context, id);
+    }
+
+    @Override
     public void onReceive(Context context, Intent intent) {
         super.onReceive(context, intent);
         String action = intent == null ? null : intent.getAction();
