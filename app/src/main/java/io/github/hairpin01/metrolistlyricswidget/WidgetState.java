@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -105,9 +106,25 @@ final class WidgetState {
         Bitmap background = ArtworkLoader.background(context, backgroundMode, trackId, artwork);
         boolean imageBackground = background != null && backgroundMode != WidgetSettings.BACKGROUND_COLOR;
 
+        // Adaptive layout: one-row widgets (3x1, 4x1…) have little vertical room, so
+        // prev/next lines are dropped and the current line takes all remaining height.
+        // Narrow widgets lose the status label (it steals title width) and get a
+        // smaller cover so the current line keeps as much room as possible.
+        // Per AppWidgetManager docs: MIN_WIDTH is the portrait width and MAX_HEIGHT
+        // is the portrait height, which is the orientation the widget lives in.
+        float density = context.getResources().getDisplayMetrics().density;
+        Bundle options = manager.getAppWidgetOptions(widgetId);
+        int portraitWidthDp = Math.round(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) / density);
+        int portraitHeightDp = Math.round(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0) / density);
+        // One launcher row is roughly 100-160dp, two rows start around 240dp;
+        // a 3x1 cell is about 200-230dp wide, 4x1 around 280dp and wider.
+        boolean compact = portraitHeightDp > 0 && portraitHeightDp < 180;
+        boolean narrow = portraitWidthDp > 0 && portraitWidthDp < 260;
+
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_lyrics);
         views.setTextViewText(R.id.widget_title, title);
         views.setTextViewText(R.id.widget_status, status);
+        views.setViewVisibility(R.id.widget_status, narrow ? View.GONE : View.VISIBLE);
 
         // Lyric lines: each slot is a ViewFlipper with two children. On a line change
         // the fresh text is written into the hidden slot and the flipper switches —
@@ -126,8 +143,12 @@ final class WidgetState {
                 next.length() == 0 ? " " : next, changed, animate);
         lineState.apply(previous, current, next);
         lineState.save(context, widgetId);
-        views.setViewVisibility(R.id.widget_flipper_previous, previous.length() == 0 ? View.GONE : View.VISIBLE);
-        views.setViewVisibility(R.id.widget_flipper_next, next.length() == 0 ? View.GONE : View.VISIBLE);
+        // Prev/next lines need roughly 3+ lyric rows of height; in the compact
+        // (Nx1) layout only the current line and progress are worth the space.
+        views.setViewVisibility(R.id.widget_flipper_previous,
+                !compact && previous.length() != 0 ? View.VISIBLE : View.GONE);
+        views.setViewVisibility(R.id.widget_flipper_next,
+                !compact && next.length() != 0 ? View.VISIBLE : View.GONE);
 
         int currentSize = WidgetSettings.textSize(context);
         int sideSize = Math.max(11, currentSize - 6);
@@ -137,6 +158,10 @@ final class WidgetState {
         views.setTextViewTextSize(R.id.widget_previous_b, TypedValue.COMPLEX_UNIT_SP, sideSize);
         views.setTextViewTextSize(R.id.widget_next_a, TypedValue.COMPLEX_UNIT_SP, sideSize);
         views.setTextViewTextSize(R.id.widget_next_b, TypedValue.COMPLEX_UNIT_SP, sideSize);
+        // In the compact layout the current line owns all vertical space, so it may
+        // wrap into more lines; wide layouts keep two lines like before.
+        views.setInt(R.id.widget_current_a, "setMaxLines", compact ? 3 : 2);
+        views.setInt(R.id.widget_current_b, "setMaxLines", compact ? 3 : 2);
 
         // Album cover next to the lyrics: placeholder while loading, bitmap when cached.
         boolean showCover = WidgetSettings.showCover(context) && trackId.length() != 0;
@@ -146,6 +171,13 @@ final class WidgetState {
             views.setImageViewBitmap(R.id.widget_cover, cover);
         } else {
             views.setImageViewResource(R.id.widget_cover, R.drawable.widget_cover_placeholder);
+        }
+        // Narrow widgets cannot afford a 52dp cover next to the lyrics.
+        if (showCover) {
+            views.setViewLayoutHeightDimen(R.id.widget_cover,
+                    narrow ? R.dimen.widget_cover_size_compact : R.dimen.widget_cover_size);
+            views.setViewLayoutWidthDimen(R.id.widget_cover,
+                    narrow ? R.dimen.widget_cover_size_compact : R.dimen.widget_cover_size);
         }
 
         // Progress bar: extrapolate position by wall clock since the last snapshot,
