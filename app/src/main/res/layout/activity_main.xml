@@ -343,7 +343,7 @@
                         android:valueFrom="0"
                         android:valueTo="100"
                         app:labelBehavior="gone"
-                        app:stepSize="1" />
+                        android:stepSize="1" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -376,7 +376,7 @@
                         android:valueFrom="0"
                         android:valueTo="90"
                         app:labelBehavior="gone"
-                        app:stepSize="1" />
+                        android:stepSize="1" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -436,7 +436,7 @@
                         android:valueFrom="15"
                         android:valueTo="27"
                         app:labelBehavior="gone"
-                        app:stepSize="1" />
+                        android:stepSize="1" />
 
                     <TextView
                         android:layout_width="match_parent"
