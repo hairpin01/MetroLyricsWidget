@@ -6,7 +6,9 @@ The widget displays the current lyrics directly in the system interface, providi
 
 ## Preview
 
-![preview](assets/preview.gif)
+![preview_4x2](assets/preview-4x2.gif)
+![preview_4x1](assets/preview-4x1.gif)
+![preview_3x1](assets/preview-3x1.gif)
 
 ## License
 
