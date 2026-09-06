@@ -3,4 +3,9 @@
     <string name="app_name">MetroLyrics Widget</string>
     <string name="widget_name">Текст MetroList</string>
     <string name="xposed_description">Синхронный текст MetroList в домашнем Android-виджете. LSPosed и LSPatch.</string>
+    <string name="navigation_home">Главная</string>
+    <string name="navigation_settings">Настройки</string>
+    <string name="navigation_about">О приложении</string>
+    <string name="app_logo_description">Логотип MetroLyrics</string>
+    <string name="demo_toggle_description">Запустить или приостановить живое демо</string>
 </resources>

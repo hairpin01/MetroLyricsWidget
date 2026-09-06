@@ -3,25 +3,37 @@ package io.github.hairpin01.metrolistlyricswidget;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.PendingIntent;
+import android.app.WallpaperManager;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
-import android.view.animation.LinearInterpolator;
+import android.view.ViewGroup;
 import android.view.WindowInsetsController;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
 import android.widget.TextView;
+import android.widget.ViewAnimator;
 
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
@@ -35,7 +47,12 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_IMAGE = 40;
+    private static final int PAGE_HOME = 0;
+    private static final int PAGE_SETTINGS = 1;
+    private static final int PAGE_ABOUT = 2;
+    private static final String STATE_PAGE = "selected_page";
     private static final long KARAOKE_PREVIEW_DURATION_MS = 5_600L;
+    private static final long HOME_PREVIEW_DURATION_MS = 7_200L;
     private static final long WIDGET_REFRESH_INTERVAL_MS = 90L;
     private static final String KARAOKE_PREVIEW_TEXT = "Слова оживают по слогам";
     private static final int[] KARAOKE_PREVIEW_START = {0, 3, 6, 9, 11, 14, 17, 20};
@@ -46,8 +63,51 @@ public class MainActivity extends Activity {
     private static final long[] KARAOKE_PREVIEW_END_MS = {
             800, 1250, 1950, 2450, 2900, 3500, 4400, 5000
     };
+    private static final String HOME_PREVIEW_TEXT =
+            "Xposed модули заставляют музыку оживать";
+    private static final int[] HOME_PREVIEW_START = {0, 7, 14, 25, 32};
+    private static final int[] HOME_PREVIEW_END = {6, 13, 24, 31, 39};
+    private static final long[] HOME_PREVIEW_START_MS = {450, 1_650, 2_850, 4_500, 5_750};
+    private static final long[] HOME_PREVIEW_END_MS = {1_450, 2_650, 4_250, 5_500, 6_850};
 
     private View root;
+    private ViewAnimator pageContainer;
+    private BottomNavigationView mainNavigation;
+    private int selectedPage = PAGE_HOME;
+    private boolean activityResumed;
+
+    private MaterialCardView homePreviewCard;
+    private FrameLayout homeWidgetFrame;
+    private ImageView homeWallpaper;
+    private ImageView homeWidgetBackground;
+    private ImageView homeWidgetScrim;
+    private ImageView homeWidgetCover;
+    private ImageView homeWidgetProgress;
+    private ImageView homeWidgetProgressTrack;
+    private TextView homeDemoBadge;
+    private TextView homePreviewCaption;
+    private TextView homeWidgetTitle;
+    private TextView homeWidgetStatus;
+    private TextView homeWidgetPreviousA;
+    private TextView homeWidgetPreviousB;
+    private TextView homeWidgetCurrentA;
+    private TextView homeWidgetCurrentB;
+    private TextView homeWidgetNextA;
+    private TextView homeWidgetNextB;
+    private View homeWidgetPrevious;
+    private View homeWidgetNext;
+    private View homeWidgetProgressWrap;
+    private View homeWidgetRoot;
+    private View homeWidgetContent;
+    private ValueAnimator homePreviewAnimator;
+    private ValueAnimator homeSizeAnimator;
+    private long homePreviewPositionMs;
+    private boolean homePreviewPlaying = true;
+    private int homePreviewRows = 2;
+    private int homeBaseColor = Color.WHITE;
+    private int homeHighlightColor = Color.WHITE;
+    private int homeActiveColor = Color.WHITE;
+
     private RadioGroup colorGroup;
     private RadioGroup backgroundGroup;
     private RadioGroup progressColorGroup;
@@ -84,6 +144,7 @@ public class MainActivity extends Activity {
     private boolean widgetRefreshScheduled;
     private final Runnable widgetRefreshRunnable = () -> {
         widgetRefreshScheduled = false;
+        refreshHomePreviewStyle();
         WidgetState.updateAll(MainActivity.this);
     };
 
@@ -94,6 +155,8 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         root = findViewById(R.id.main_root);
         configureSystemBars();
+        bindNavigation(savedInstanceState);
+        bindHomePreview();
         bindHeader();
         bindColorSettings();
         bindBackgroundSettings();
@@ -101,29 +164,51 @@ public class MainActivity extends Activity {
         bindKaraokeSettings();
         bindTextSettings();
         bindActions();
+        bindAbout();
+        if (savedInstanceState == null) playHomeEntrance();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
         karaokePreviewPalette = null;
+        loadWallpaperPreview();
+        bindHeader();
+        refreshHomePreviewStyle();
         updateKaraokePreview();
-        if (karaokePreviewPlaying) resumeKaraokePreview();
+        updatePreviewAnimationState();
         requestTrackAccentRefresh();
     }
 
     @Override
     protected void onPause() {
-        if (karaokePreviewAnimator != null && karaokePreviewAnimator.isStarted()
-                && !karaokePreviewAnimator.isPaused()) {
-            karaokePreviewAnimator.pause();
-        }
+        activityResumed = false;
+        pauseAnimator(homePreviewAnimator);
+        pauseAnimator(karaokePreviewAnimator);
         super.onPause();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        outState.putInt(STATE_PAGE, selectedPage);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (selectedPage != PAGE_HOME) {
+            mainNavigation.setSelectedItemId(R.id.navigation_home);
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
     protected void onDestroy() {
         widgetRefreshHandler.removeCallbacks(widgetRefreshRunnable);
+        if (homePreviewAnimator != null) homePreviewAnimator.cancel();
+        if (homeSizeAnimator != null) homeSizeAnimator.cancel();
         if (karaokePreviewAnimator != null) karaokePreviewAnimator.cancel();
         super.onDestroy();
     }
@@ -141,9 +226,436 @@ public class MainActivity extends Activity {
         controller.setSystemBarsAppearance(appearance, mask);
     }
 
+    private void bindNavigation(Bundle savedInstanceState) {
+        pageContainer = findViewById(R.id.page_container);
+        mainNavigation = findViewById(R.id.main_navigation);
+        pageContainer.setInAnimation(this, R.anim.page_in);
+        pageContainer.setOutAnimation(this, R.anim.page_out);
+
+        selectedPage = savedInstanceState == null
+                ? PAGE_HOME
+                : Math.max(PAGE_HOME, Math.min(PAGE_ABOUT,
+                savedInstanceState.getInt(STATE_PAGE, PAGE_HOME)));
+        pageContainer.setDisplayedChild(selectedPage);
+        mainNavigation.setOnItemSelectedListener(item -> {
+            int page = item.getItemId() == R.id.navigation_settings
+                    ? PAGE_SETTINGS
+                    : item.getItemId() == R.id.navigation_about
+                    ? PAGE_ABOUT : PAGE_HOME;
+            showPage(page);
+            return true;
+        });
+        mainNavigation.setSelectedItemId(navigationIdForPage(selectedPage));
+    }
+
+    private void showPage(int page) {
+        if (page < PAGE_HOME || page > PAGE_ABOUT) return;
+        if (pageContainer.getDisplayedChild() != page) {
+            pageContainer.setDisplayedChild(page);
+        }
+        selectedPage = page;
+        updatePreviewAnimationState();
+    }
+
+    private static int navigationIdForPage(int page) {
+        if (page == PAGE_SETTINGS) return R.id.navigation_settings;
+        if (page == PAGE_ABOUT) return R.id.navigation_about;
+        return R.id.navigation_home;
+    }
+
+    private void bindHomePreview() {
+        homePreviewCard = findViewById(R.id.home_preview_card);
+        homeWidgetFrame = findViewById(R.id.home_widget_frame);
+        homeWallpaper = findViewById(R.id.home_wallpaper);
+        homeDemoBadge = findViewById(R.id.home_demo_badge);
+        homePreviewCaption = findViewById(R.id.home_preview_caption);
+        homeWidgetRoot = findViewById(R.id.widget_root);
+        homeWidgetContent = findViewById(R.id.widget_content);
+        homeWidgetBackground = findViewById(R.id.widget_bg);
+        homeWidgetScrim = findViewById(R.id.widget_scrim);
+        homeWidgetCover = findViewById(R.id.widget_cover);
+        homeWidgetTitle = findViewById(R.id.widget_title);
+        homeWidgetStatus = findViewById(R.id.widget_status);
+        homeWidgetPrevious = findViewById(R.id.widget_flipper_previous);
+        homeWidgetNext = findViewById(R.id.widget_flipper_next);
+        homeWidgetPreviousA = findViewById(R.id.widget_previous_a);
+        homeWidgetPreviousB = findViewById(R.id.widget_previous_b);
+        homeWidgetCurrentA = findViewById(R.id.widget_current_a);
+        homeWidgetCurrentB = findViewById(R.id.widget_current_b);
+        homeWidgetNextA = findViewById(R.id.widget_next_a);
+        homeWidgetNextB = findViewById(R.id.widget_next_b);
+        homeWidgetProgressWrap = findViewById(R.id.widget_progress_wrap);
+        homeWidgetProgressTrack = findViewById(R.id.widget_progress_track);
+        homeWidgetProgress = findViewById(R.id.widget_progress);
+
+        homePreviewCard.setOnClickListener(view -> {
+            homePreviewPlaying = !homePreviewPlaying;
+            updateHomePreviewFrame();
+            updatePreviewAnimationState();
+        });
+        MaterialButtonToggleGroup sizes = findViewById(R.id.home_size_group);
+        sizes.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) return;
+            int rows = checkedId == R.id.home_size_4x1 ? 1
+                    : checkedId == R.id.home_size_4x3 ? 3 : 2;
+            animateHomePreviewSize(rows);
+        });
+        findViewById(R.id.home_action_pin).setOnClickListener(view -> requestPinWidget());
+        findViewById(R.id.home_action_metrolist).setOnClickListener(view -> openMetroList());
+        findViewById(R.id.home_source_card).setOnClickListener(view -> openMetroList());
+
+        homePreviewAnimator = ValueAnimator.ofInt(0, (int) HOME_PREVIEW_DURATION_MS);
+        homePreviewAnimator.setDuration(HOME_PREVIEW_DURATION_MS);
+        homePreviewAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        homePreviewAnimator.setInterpolator(new LinearInterpolator());
+        homePreviewAnimator.addUpdateListener(animation -> {
+            homePreviewPositionMs = (Integer) animation.getAnimatedValue();
+            updateHomePreviewFrame();
+        });
+
+        loadWallpaperPreview();
+        applyHomePreviewRows();
+        refreshHomePreviewStyle();
+    }
+
+    private void bindAbout() {
+        TextView version = findViewById(R.id.about_version);
+        version.setText("Версия " + appVersion());
+        findViewById(R.id.about_action_github).setOnClickListener(view -> openWeb(
+                "https://github.com/hairpin01/MetroLyricsWidget"));
+        findViewById(R.id.about_action_metrolist).setOnClickListener(view -> openMetroList());
+    }
+
     private void bindHeader() {
-        TextView status = findViewById(R.id.module_status);
-        status.setText(metroListStatus());
+        String status = metroListStatus();
+        TextView homeStatus = findViewById(R.id.home_source_status);
+        TextView aboutStatus = findViewById(R.id.about_module_status);
+        if (homeStatus != null) homeStatus.setText(status);
+        if (aboutStatus != null) aboutStatus.setText(status);
+
+        View dot = findViewById(R.id.home_source_dot);
+        if (dot != null && dot.getBackground() != null) {
+            int color = MaterialColors.getColor(this,
+                    metroListInstalled()
+                            ? com.google.android.material.R.attr.colorPrimary
+                            : com.google.android.material.R.attr.colorError,
+                    Color.GRAY);
+            dot.getBackground().mutate().setTint(color);
+        }
+    }
+
+    private void loadWallpaperPreview() {
+        if (homeWallpaper == null) return;
+        homeWallpaper.setImageResource(R.drawable.preview_wallpaper_fallback);
+        try {
+            Drawable wallpaper = WallpaperManager.getInstance(this).getDrawable();
+            if (wallpaper != null) homeWallpaper.setImageDrawable(wallpaper);
+        } catch (Throwable ignored) {
+            // Android may hide wallpaper pixels from third-party apps. The fallback
+            // still follows the current Material You palette.
+        }
+    }
+
+    private void refreshHomePreviewStyle() {
+        if (homeWidgetBackground == null) return;
+        ThemePalette palette = ThemePalette.resolve(this);
+        String trackId = WidgetState.currentTrackId(this);
+        String artwork = WidgetState.currentArtwork(this);
+        int backgroundMode = WidgetSettings.backgroundMode(this);
+        int previewHeightDp = homePreviewRows == 1 ? 110 : homePreviewRows == 3 ? 218 : 158;
+        Bitmap background = ArtworkLoader.background(this, backgroundMode, trackId, artwork,
+                360, previewHeightDp);
+        boolean imageBackground = backgroundMode != WidgetSettings.BACKGROUND_COLOR;
+
+        homeWidgetBackground.clearColorFilter();
+        homeWidgetBackground.setScaleType(ImageView.ScaleType.FIT_XY);
+        if (background != null) {
+            homeWidgetBackground.setImageBitmap(background);
+        } else if (imageBackground) {
+            int darkAccent = ThemePalette.blend(palette.accent, Color.BLACK, 0.58f);
+            GradientDrawable demoArtwork = new GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    new int[]{darkAccent, ThemePalette.blend(palette.surface, Color.BLACK, 0.32f),
+                            palette.accent});
+            demoArtwork.setCornerRadius(dp(26));
+            homeWidgetBackground.setImageDrawable(demoArtwork);
+        } else {
+            homeWidgetBackground.setImageDrawable(roundedDrawable(palette.surface, 26));
+        }
+        homeWidgetBackground.setImageAlpha(Math.round(
+                255f * WidgetSettings.opacity(this) / 100f));
+        homeWidgetRoot.setBackground(roundedDrawable(Color.TRANSPARENT, 26));
+        homeWidgetRoot.setClipToOutline(true);
+
+        homeWidgetScrim.setColorFilter(Color.BLACK);
+        homeWidgetScrim.setImageAlpha(imageBackground
+                ? Math.round(255f * WidgetSettings.dimming(this) / 100f
+                * WidgetSettings.opacity(this) / 100f)
+                : 0);
+
+        int trackAccent = ThemePalette.trackAccent(this, trackId, artwork, palette.accent);
+        int configuredHighlight = WidgetSettings.karaokeColor(this, palette.accent, trackAccent);
+        int configuredActive = WidgetSettings.karaokeActiveColor(
+                this, configuredHighlight, palette.accent, trackAccent);
+        homeBaseColor = imageBackground ? Color.WHITE : palette.foreground;
+        homeHighlightColor = imageBackground
+                ? readableOnDark(configuredHighlight) : configuredHighlight;
+        homeActiveColor = imageBackground
+                ? readableOnDark(configuredActive) : configuredActive;
+        int sideColor = imageBackground
+                ? Color.argb(158, 255, 255, 255) : palette.muted;
+
+        homeWidgetTitle.setText("MetroLyrics  ·  Xposed");
+        homeWidgetStatus.setText("играет · demo");
+        homeWidgetTitle.setTextColor(imageBackground
+                ? readableOnDark(palette.accent) : palette.accent);
+        homeWidgetStatus.setTextColor(imageBackground
+                ? Color.argb(210, 255, 255, 255) : palette.secondary);
+        setTextColor(sideColor, homeWidgetPreviousA, homeWidgetPreviousB,
+                homeWidgetNextA, homeWidgetNextB);
+        setTextColor(homeBaseColor, homeWidgetCurrentA, homeWidgetCurrentB);
+
+        int currentSize = WidgetSettings.textSize(this);
+        int sideSize = Math.max(11, currentSize - 6);
+        homeWidgetCurrentA.setTextSize(TypedValue.COMPLEX_UNIT_SP, currentSize);
+        homeWidgetCurrentB.setTextSize(TypedValue.COMPLEX_UNIT_SP, currentSize);
+        homeWidgetPreviousA.setTextSize(TypedValue.COMPLEX_UNIT_SP, sideSize);
+        homeWidgetPreviousB.setTextSize(TypedValue.COMPLEX_UNIT_SP, sideSize);
+        homeWidgetNextA.setTextSize(TypedValue.COMPLEX_UNIT_SP, sideSize);
+        homeWidgetNextB.setTextSize(TypedValue.COMPLEX_UNIT_SP, sideSize);
+
+        int gravity = WidgetSettings.textAlignment(this) == WidgetSettings.TEXT_ALIGN_CENTER
+                ? Gravity.CENTER_HORIZONTAL
+                : WidgetSettings.textAlignment(this) == WidgetSettings.TEXT_ALIGN_END
+                ? Gravity.END : Gravity.START;
+        setTextGravity(gravity, homeWidgetPreviousA, homeWidgetPreviousB,
+                homeWidgetCurrentA, homeWidgetCurrentB, homeWidgetNextA, homeWidgetNextB);
+
+        boolean showCover = WidgetSettings.showCover(this);
+        homeWidgetCover.setVisibility(showCover ? View.VISIBLE : View.GONE);
+        if (showCover) {
+            Bitmap cover = ArtworkLoader.cover(this, trackId, artwork);
+            if (cover == null) {
+                homeWidgetCover.setImageResource(R.drawable.ic_launcher);
+            } else {
+                homeWidgetCover.setImageBitmap(cover);
+            }
+        }
+
+        boolean showProgress = WidgetSettings.showProgress(this);
+        homeWidgetProgressWrap.setVisibility(showProgress ? View.VISIBLE : View.GONE);
+        if (showProgress) {
+            int progressColor = WidgetSettings.progressColor(this, palette.accent, trackAccent);
+            homeWidgetProgress.setColorFilter(imageBackground
+                    ? readableOnDark(progressColor) : progressColor);
+            homeWidgetProgressTrack.setColorFilter(imageBackground
+                    ? Color.WHITE : palette.foreground);
+            homeWidgetProgressTrack.setImageAlpha(Math.round(
+                    255f * WidgetSettings.progressTrackOpacity(this) / 100f));
+            setViewHeight(homeWidgetProgress, WidgetSettings.progressHeightDp(this));
+            setViewHeight(homeWidgetProgressTrack, WidgetSettings.progressHeightDp(this));
+        }
+
+        applyHomePreviewRows();
+        updateHomePreviewFrame();
+    }
+
+    private void applyHomePreviewRows() {
+        if (homeWidgetPrevious == null) return;
+        boolean showContext = homePreviewRows > 1;
+        homeWidgetPrevious.setVisibility(showContext ? View.VISIBLE : View.GONE);
+        homeWidgetNext.setVisibility(showContext ? View.VISIBLE : View.GONE);
+        int contextLines = homePreviewRows == 3 ? 2 : 1;
+        String previous = homePreviewRows == 3
+                ? "Хуки готовы\nСтроки синхронизированы"
+                : "Хуки ловят каждую строку";
+        String next = homePreviewRows == 3
+                ? "Акцент следует за музыкой\nВиджет живёт на рабочем столе"
+                : "Виджет двигается в ритме";
+        homeWidgetPreviousA.setText(previous);
+        homeWidgetPreviousB.setText(previous);
+        homeWidgetNextA.setText(next);
+        homeWidgetNextB.setText(next);
+        homeWidgetPreviousA.setMaxLines(contextLines);
+        homeWidgetPreviousB.setMaxLines(contextLines);
+        homeWidgetNextA.setMaxLines(contextLines);
+        homeWidgetNextB.setMaxLines(contextLines);
+        homeWidgetCurrentA.setMaxLines(homePreviewRows == 1 ? 3 : 2);
+        homeWidgetCurrentB.setMaxLines(homePreviewRows == 1 ? 3 : 2);
+
+        int verticalPadding = WidgetSettings.autoVerticalPadding(this)
+                ? (homePreviewRows == 1 ? 4 : homePreviewRows == 3 ? 9 : 6)
+                : WidgetSettings.topPaddingDp(this);
+        int bottomPadding = WidgetSettings.autoVerticalPadding(this)
+                ? verticalPadding : WidgetSettings.bottomPaddingDp(this);
+        homeWidgetContent.setPadding(dp(14), dp(verticalPadding), dp(14), dp(bottomPadding));
+    }
+
+    private void updateHomePreviewFrame() {
+        if (homeWidgetCurrentA == null) return;
+        long position = homePreviewPositionMs;
+        int highlightEnd = 0;
+        int activeStart = -1;
+        int activeEnd = -1;
+        for (int i = 0; i < HOME_PREVIEW_START.length; i++) {
+            if (HOME_PREVIEW_START_MS[i] <= position) {
+                highlightEnd = Math.max(highlightEnd, HOME_PREVIEW_END[i]);
+                if (position < HOME_PREVIEW_END_MS[i]) {
+                    activeStart = HOME_PREVIEW_START[i];
+                    activeEnd = HOME_PREVIEW_END[i];
+                }
+            }
+        }
+        CharSequence text = WidgetState.karaokeText(this, HOME_PREVIEW_TEXT, true,
+                highlightEnd, activeStart, activeEnd,
+                homeBaseColor, homeHighlightColor, homeActiveColor);
+        homeWidgetCurrentA.setText(text);
+        homeWidgetCurrentB.setText(text);
+        homeWidgetProgress.setImageLevel((int) Math.min(10_000L,
+                10_000L * Math.max(0L, position) / HOME_PREVIEW_DURATION_MS));
+        homeDemoBadge.setText(homePreviewPlaying
+                ? "WORD SYNC · DEMO" : "WORD SYNC · ПАУЗА");
+        homePreviewCard.setContentDescription(homePreviewPlaying
+                ? "Приостановить живое демо" : "Продолжить живое демо");
+    }
+
+    private void animateHomePreviewSize(int rows) {
+        homePreviewRows = Math.max(1, Math.min(3, rows));
+        int target = dp(homePreviewRows == 1 ? 110 : homePreviewRows == 3 ? 218 : 158);
+        homePreviewCaption.setText("4 × " + homePreviewRows + "  ·  живое демо");
+        refreshHomePreviewStyle();
+
+        ViewGroup.LayoutParams params = homeWidgetFrame.getLayoutParams();
+        int start = homeWidgetFrame.getHeight() > 0
+                ? homeWidgetFrame.getHeight() : params.height;
+        if (start == target) return;
+        if (homeSizeAnimator != null) homeSizeAnimator.cancel();
+        homeSizeAnimator = ValueAnimator.ofInt(start, target);
+        homeSizeAnimator.setDuration(320L);
+        homeSizeAnimator.setInterpolator(new DecelerateInterpolator());
+        homeSizeAnimator.addUpdateListener(animation -> {
+            ViewGroup.LayoutParams current = homeWidgetFrame.getLayoutParams();
+            current.height = (Integer) animation.getAnimatedValue();
+            homeWidgetFrame.setLayoutParams(current);
+        });
+        homeSizeAnimator.start();
+    }
+
+    private void playHomeEntrance() {
+        root.post(() -> {
+            View[] views = {
+                    findViewById(R.id.home_brand), homePreviewCard,
+                    findViewById(R.id.home_size_group),
+                    findViewById(R.id.home_primary_actions),
+                    findViewById(R.id.home_source_card)
+            };
+            for (int i = 0; i < views.length; i++) {
+                View view = views[i];
+                if (view == null) continue;
+                view.setAlpha(0f);
+                view.setTranslationY(dp(18));
+                if (view == homePreviewCard) {
+                    view.setScaleX(0.97f);
+                    view.setScaleY(0.97f);
+                }
+                view.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setStartDelay(70L + i * 85L)
+                        .setDuration(430L)
+                        .setInterpolator(new DecelerateInterpolator())
+                        .start();
+            }
+        });
+    }
+
+    private void updatePreviewAnimationState() {
+        if (!activityResumed) return;
+        if (selectedPage == PAGE_HOME && homePreviewPlaying) {
+            resumeHomePreview();
+        } else {
+            pauseAnimator(homePreviewAnimator);
+        }
+        if (selectedPage == PAGE_SETTINGS && karaokePreviewPlaying) {
+            resumeKaraokePreview();
+        } else {
+            pauseAnimator(karaokePreviewAnimator);
+        }
+    }
+
+    private void resumeHomePreview() {
+        if (homePreviewAnimator == null) return;
+        if (!homePreviewAnimator.isStarted()) {
+            homePreviewAnimator.start();
+            homePreviewAnimator.setCurrentPlayTime(homePreviewPositionMs);
+        } else if (homePreviewAnimator.isPaused()) {
+            homePreviewAnimator.resume();
+        }
+    }
+
+    private static void pauseAnimator(ValueAnimator animator) {
+        if (animator != null && animator.isStarted() && !animator.isPaused()) {
+            animator.pause();
+        }
+    }
+
+    private void openWeb(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Throwable error) {
+            showMessage("Не удалось открыть ссылку");
+        }
+    }
+
+    private String appVersion() {
+        try {
+            PackageInfo own = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return own.versionName == null ? "" : own.versionName;
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private boolean metroListInstalled() {
+        try {
+            getPackageManager().getPackageInfo(Constants.TARGET_PACKAGE, 0);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private GradientDrawable roundedDrawable(int color, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        return drawable;
+    }
+
+    private static int readableOnDark(int color) {
+        double luminance = 0.2126 * Color.red(color)
+                + 0.7152 * Color.green(color) + 0.0722 * Color.blue(color);
+        return luminance < 150.0 ? ThemePalette.blend(color, Color.WHITE, 0.48f) : color;
+    }
+
+    private static void setTextColor(int color, TextView... views) {
+        for (TextView view : views) view.setTextColor(color);
+    }
+
+    private static void setTextGravity(int gravity, TextView... views) {
+        for (TextView view : views) view.setGravity(gravity);
+    }
+
+    private void setViewHeight(View view, int heightDp) {
+        ViewGroup.LayoutParams params = view.getLayoutParams();
+        params.height = dp(heightDp);
+        view.setLayoutParams(params);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void bindColorSettings() {
