@@ -143,6 +143,14 @@
                             android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
                         <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/color_track"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="Палитра трека из обложки"
+                            android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
                             android:id="@+id/color_custom"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -673,6 +681,14 @@
                                 android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
                             <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/karaoke_color_track"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:text="Акцент обложки трека"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                            <com.google.android.material.radiobutton.MaterialRadioButton
                                 android:id="@+id/karaoke_color_custom"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
@@ -730,30 +746,69 @@
                             android:orientation="vertical"
                             android:visibility="gone">
 
-                            <com.google.android.material.textfield.TextInputLayout
-                                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                            <RadioGroup
+                                android:id="@+id/karaoke_active_color_group"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:hint="Цвет активного фрагмента"
-                                app:helperText="#RRGGBB">
+                                android:orientation="vertical">
 
-                                <com.google.android.material.textfield.TextInputEditText
-                                    android:id="@+id/karaoke_active_color_input"
+                                <com.google.android.material.radiobutton.MaterialRadioButton
+                                    android:id="@+id/karaoke_active_color_accent"
                                     android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
-                                    android:inputType="textCapCharacters"
-                                    android:maxLength="9"
-                                    android:singleLine="true" />
-                            </com.google.android.material.textfield.TextInputLayout>
+                                    android:minHeight="48dp"
+                                    android:text="Акцент выбранной палитры"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/save_karaoke_active_color"
-                                style="@style/Widget.Material3.Button.TonalButton"
+                                <com.google.android.material.radiobutton.MaterialRadioButton
+                                    android:id="@+id/karaoke_active_color_track"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:minHeight="48dp"
+                                    android:text="Акцент обложки трека"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                                <com.google.android.material.radiobutton.MaterialRadioButton
+                                    android:id="@+id/karaoke_active_color_custom"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:minHeight="48dp"
+                                    android:text="Свой цвет"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+                            </RadioGroup>
+
+                            <LinearLayout
+                                android:id="@+id/karaoke_active_custom_color_container"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
-                                android:minHeight="52dp"
-                                android:text="Применить активный цвет" />
+                                android:orientation="vertical"
+                                android:visibility="gone">
+
+                                <com.google.android.material.textfield.TextInputLayout
+                                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:hint="Цвет активного фрагмента"
+                                    app:helperText="#RRGGBB">
+
+                                    <com.google.android.material.textfield.TextInputEditText
+                                        android:id="@+id/karaoke_active_color_input"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:inputType="textCapCharacters"
+                                        android:maxLength="9"
+                                        android:singleLine="true" />
+                                </com.google.android.material.textfield.TextInputLayout>
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/save_karaoke_active_color"
+                                    style="@style/Widget.Material3.Button.TonalButton"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="8dp"
+                                    android:minHeight="52dp"
+                                    android:text="Применить активный цвет" />
+                            </LinearLayout>
                         </LinearLayout>
 
                         <LinearLayout

@@ -48,11 +48,13 @@ public class MainActivity extends Activity {
     private RadioGroup colorGroup;
     private RadioGroup backgroundGroup;
     private RadioGroup karaokeColorGroup;
+    private RadioGroup karaokeActiveColorGroup;
     private RadioGroup karaokeHighlightModeGroup;
     private LinearLayout customColorsContainer;
     private LinearLayout karaokeControlsContainer;
     private LinearLayout karaokeCustomColorContainer;
     private LinearLayout karaokeActiveColorContainer;
+    private LinearLayout karaokeActiveCustomColorContainer;
     private LinearLayout karaokePopStrengthContainer;
     private View imagePickerContainer;
     private EditText surfaceInput;
@@ -94,6 +96,7 @@ public class MainActivity extends Activity {
         karaokePreviewPalette = null;
         updateKaraokePreview();
         if (karaokePreviewPlaying) resumeKaraokePreview();
+        requestTrackAccentRefresh();
     }
 
     @Override
@@ -145,6 +148,8 @@ public class MainActivity extends Activity {
                 ? R.id.color_wallpaper
                 : source == WidgetSettings.COLOR_CUSTOM
                 ? R.id.color_custom
+                : source == WidgetSettings.COLOR_TRACK
+                ? R.id.color_track
                 : R.id.color_system);
         updateColorControls(source);
 
@@ -153,11 +158,14 @@ public class MainActivity extends Activity {
                     ? WidgetSettings.COLOR_WALLPAPER
                     : checkedId == R.id.color_custom
                     ? WidgetSettings.COLOR_CUSTOM
+                    : checkedId == R.id.color_track
+                    ? WidgetSettings.COLOR_TRACK
                     : WidgetSettings.COLOR_SYSTEM;
             WidgetSettings.setColorSource(this, value);
             updateColorControls(value);
             karaokePreviewPalette = null;
             updateKaraokePreview();
+            if (value == WidgetSettings.COLOR_TRACK) requestTrackAccentRefresh();
             refreshWidgets();
         });
 
@@ -270,8 +278,11 @@ public class MainActivity extends Activity {
         karaokeControlsContainer = findViewById(R.id.karaoke_controls_container);
         karaokeCustomColorContainer = findViewById(R.id.karaoke_custom_color_container);
         karaokeActiveColorContainer = findViewById(R.id.karaoke_active_color_container);
+        karaokeActiveCustomColorContainer = findViewById(
+                R.id.karaoke_active_custom_color_container);
         karaokePopStrengthContainer = findViewById(R.id.karaoke_pop_strength_container);
         karaokeColorGroup = findViewById(R.id.karaoke_color_group);
+        karaokeActiveColorGroup = findViewById(R.id.karaoke_active_color_group);
         karaokeHighlightModeGroup = findViewById(R.id.karaoke_highlight_mode_group);
         karaokeColorInput = findViewById(R.id.karaoke_color_input);
         karaokeActiveColorInput = findViewById(R.id.karaoke_active_color_input);
@@ -286,7 +297,14 @@ public class MainActivity extends Activity {
 
         int colorMode = WidgetSettings.karaokeColorMode(this);
         karaokeColorGroup.check(colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM
-                ? R.id.karaoke_color_custom : R.id.karaoke_color_accent);
+                ? R.id.karaoke_color_custom
+                : colorMode == WidgetSettings.KARAOKE_COLOR_TRACK
+                ? R.id.karaoke_color_track : R.id.karaoke_color_accent);
+        int activeColorMode = WidgetSettings.karaokeActiveColorMode(this);
+        karaokeActiveColorGroup.check(activeColorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM
+                ? R.id.karaoke_active_color_custom
+                : activeColorMode == WidgetSettings.KARAOKE_COLOR_TRACK
+                ? R.id.karaoke_active_color_track : R.id.karaoke_active_color_accent);
         int highlightMode = WidgetSettings.karaokeMode(this);
         karaokeHighlightModeGroup.check(
                 highlightMode == WidgetSettings.KARAOKE_MODE_ACTIVE_TOKEN
@@ -331,10 +349,26 @@ public class MainActivity extends Activity {
         karaokeColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
             int mode = checkedId == R.id.karaoke_color_custom
                     ? WidgetSettings.KARAOKE_COLOR_CUSTOM
+                    : checkedId == R.id.karaoke_color_track
+                    ? WidgetSettings.KARAOKE_COLOR_TRACK
                     : WidgetSettings.KARAOKE_COLOR_ACCENT;
             WidgetSettings.setKaraokeColorMode(this, mode);
             updateKaraokeControls(enabled.isChecked(), mode);
             updateKaraokePreview();
+            if (mode == WidgetSettings.KARAOKE_COLOR_TRACK) requestTrackAccentRefresh();
+            refreshWidgets();
+        });
+        karaokeActiveColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int mode = checkedId == R.id.karaoke_active_color_custom
+                    ? WidgetSettings.KARAOKE_COLOR_CUSTOM
+                    : checkedId == R.id.karaoke_active_color_track
+                    ? WidgetSettings.KARAOKE_COLOR_TRACK
+                    : WidgetSettings.KARAOKE_COLOR_ACCENT;
+            WidgetSettings.setKaraokeActiveColorMode(this, mode);
+            updateKaraokeControls(enabled.isChecked(),
+                    WidgetSettings.karaokeColorMode(this));
+            updateKaraokePreview();
+            if (mode == WidgetSettings.KARAOKE_COLOR_TRACK) requestTrackAccentRefresh();
             refreshWidgets();
         });
         findViewById(R.id.save_karaoke_color).setOnClickListener(
@@ -362,9 +396,11 @@ public class MainActivity extends Activity {
         karaokeCustomColorContainer.setVisibility(enabled
                 && colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM
                 ? View.VISIBLE : View.GONE);
-        karaokeActiveColorContainer.setVisibility(enabled
-                && karaokeSeparateActiveColorSwitch.isChecked()
-                ? View.VISIBLE : View.GONE);
+        boolean separateActive = enabled && karaokeSeparateActiveColorSwitch.isChecked();
+        karaokeActiveColorContainer.setVisibility(separateActive ? View.VISIBLE : View.GONE);
+        karaokeActiveCustomColorContainer.setVisibility(separateActive
+                && WidgetSettings.karaokeActiveColorMode(this)
+                == WidgetSettings.KARAOKE_COLOR_CUSTOM ? View.VISIBLE : View.GONE);
         karaokePopStrengthContainer.setVisibility(enabled && karaokePopSwitch.isChecked()
                 ? View.VISIBLE : View.GONE);
     }
@@ -390,7 +426,9 @@ public class MainActivity extends Activity {
             int color = parseColor(karaokeActiveColorInput.getText().toString());
             WidgetSettings.setCustomKaraokeActiveColor(this, color);
             WidgetSettings.setKaraokeSeparateActiveColor(this, true);
+            WidgetSettings.setKaraokeActiveColorMode(this, WidgetSettings.KARAOKE_COLOR_CUSTOM);
             karaokeSeparateActiveColorSwitch.setChecked(true);
+            karaokeActiveColorGroup.check(R.id.karaoke_active_color_custom);
             updateKaraokeControls(WidgetSettings.karaokeEnabled(this),
                     WidgetSettings.karaokeColorMode(this));
             updateKaraokePreview();
@@ -528,12 +566,18 @@ public class MainActivity extends Activity {
             }
         }
         ThemePalette palette = karaokePreviewPalette;
-        if (palette == null) {
+        if (palette == null || WidgetSettings.usesTrackAccent(this)) {
             palette = ThemePalette.resolve(this);
             karaokePreviewPalette = palette;
         }
-        int highlightColor = WidgetSettings.karaokeColor(this, palette.accent);
-        int activeColor = WidgetSettings.karaokeActiveColor(this, highlightColor);
+        String trackId = WidgetState.currentTrackId(this);
+        String artwork = WidgetState.currentArtwork(this);
+        int trackAccent = ThemePalette.trackAccent(
+                this, trackId, artwork, palette.accent);
+        int highlightColor = WidgetSettings.karaokeColor(
+                this, palette.accent, trackAccent);
+        int activeColor = WidgetSettings.karaokeActiveColor(
+                this, highlightColor, palette.accent, trackAccent);
         karaokePreviewCard.setCardBackgroundColor(palette.surface);
         karaokePreviewCurrent.setTextColor(palette.foreground);
         karaokePreviewCurrent.setTextSize(TypedValue.COMPLEX_UNIT_SP,
@@ -541,6 +585,16 @@ public class MainActivity extends Activity {
         karaokePreviewCurrent.setText(WidgetState.karaokeText(this,
                 KARAOKE_PREVIEW_TEXT, true, highlightEnd, activeStart, activeEnd,
                 palette.foreground, highlightColor, activeColor));
+    }
+
+    private void requestTrackAccentRefresh() {
+        if (!WidgetSettings.usesTrackAccent(this)) return;
+        WidgetState.ensureCurrentArtwork(this, () -> runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            karaokePreviewPalette = null;
+            updateKaraokePreview();
+            refreshWidgets();
+        }));
     }
 
     private static String formatOffset(int value) {

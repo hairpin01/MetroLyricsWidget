@@ -9,12 +9,16 @@ final class WidgetSettings {
 
     static final int COLOR_SYSTEM = 0;
     static final int COLOR_WALLPAPER = 1;
+    // Keep 2 for custom so preferences written by previous builds remain valid.
     static final int COLOR_CUSTOM = 2;
+    static final int COLOR_TRACK = 3;
     static final int BACKGROUND_COLOR = 0;
     static final int BACKGROUND_ARTWORK = 1;
     static final int BACKGROUND_IMAGE = 2;
     static final int KARAOKE_COLOR_ACCENT = 0;
+    // Keep 1 for custom so preferences written by previous builds remain valid.
     static final int KARAOKE_COLOR_CUSTOM = 1;
+    static final int KARAOKE_COLOR_TRACK = 2;
     static final int KARAOKE_MODE_TRAIL = 0;
     static final int KARAOKE_MODE_ACTIVE_TOKEN = 1;
     static final int KARAOKE_MODE_ACTIVE_WORD = 2;
@@ -44,6 +48,7 @@ final class WidgetSettings {
     private static final String KEY_KARAOKE_COLOR_MODE = "karaoke_color_mode";
     private static final String KEY_KARAOKE_CUSTOM_COLOR = "karaoke_custom_color";
     private static final String KEY_KARAOKE_SEPARATE_ACTIVE_COLOR = "karaoke_separate_active_color";
+    private static final String KEY_KARAOKE_ACTIVE_COLOR_MODE = "karaoke_active_color_mode";
     private static final String KEY_KARAOKE_ACTIVE_COLOR = "karaoke_active_color";
     private static final String KEY_LYRICS_TIMING_OFFSET_MS = "lyrics_timing_offset_ms";
 
@@ -54,11 +59,11 @@ final class WidgetSettings {
     }
 
     static int colorSource(Context context) {
-        return clamp(prefs(context).getInt(KEY_COLOR_SOURCE, COLOR_SYSTEM), COLOR_SYSTEM, COLOR_CUSTOM);
+        return clamp(prefs(context).getInt(KEY_COLOR_SOURCE, COLOR_SYSTEM), COLOR_SYSTEM, COLOR_TRACK);
     }
 
     static void setColorSource(Context context, int value) {
-        prefs(context).edit().putInt(KEY_COLOR_SOURCE, clamp(value, COLOR_SYSTEM, COLOR_CUSTOM)).apply();
+        prefs(context).edit().putInt(KEY_COLOR_SOURCE, clamp(value, COLOR_SYSTEM, COLOR_TRACK)).apply();
     }
 
     static int backgroundMode(Context context) {
@@ -206,12 +211,11 @@ final class WidgetSettings {
 
     static int karaokeColorMode(Context context) {
         return clamp(prefs(context).getInt(KEY_KARAOKE_COLOR_MODE, KARAOKE_COLOR_ACCENT),
-                KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_CUSTOM);
+                KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_TRACK);
     }
-
     static void setKaraokeColorMode(Context context, int value) {
         prefs(context).edit().putInt(KEY_KARAOKE_COLOR_MODE,
-                clamp(value, KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_CUSTOM)).apply();
+                clamp(value, KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_TRACK)).apply();
     }
 
     static int customKaraokeColor(Context context) {
@@ -222,9 +226,11 @@ final class WidgetSettings {
         prefs(context).edit().putInt(KEY_KARAOKE_CUSTOM_COLOR, opaque(color)).apply();
     }
 
-    static int karaokeColor(Context context, int paletteAccent) {
-        return karaokeColorMode(context) == KARAOKE_COLOR_CUSTOM
-                ? customKaraokeColor(context) : paletteAccent;
+    static int karaokeColor(Context context, int paletteAccent, int trackAccent) {
+        int mode = karaokeColorMode(context);
+        if (mode == KARAOKE_COLOR_CUSTOM) return customKaraokeColor(context);
+        if (mode == KARAOKE_COLOR_TRACK) return trackAccent;
+        return paletteAccent;
     }
 
     static boolean karaokeSeparateActiveColor(Context context) {
@@ -235,17 +241,35 @@ final class WidgetSettings {
         prefs(context).edit().putBoolean(KEY_KARAOKE_SEPARATE_ACTIVE_COLOR, value).apply();
     }
 
+    static int karaokeActiveColorMode(Context context) {
+        // Custom is the default to preserve the behavior of the old separate-color switch.
+        return clamp(prefs(context).getInt(KEY_KARAOKE_ACTIVE_COLOR_MODE,
+                        KARAOKE_COLOR_CUSTOM),
+                KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_TRACK);
+    }
+    static void setKaraokeActiveColorMode(Context context, int value) {
+        prefs(context).edit().putInt(KEY_KARAOKE_ACTIVE_COLOR_MODE,
+                clamp(value, KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_TRACK)).apply();
+    }
     static int customKaraokeActiveColor(Context context) {
         return prefs(context).getInt(KEY_KARAOKE_ACTIVE_COLOR, Color.rgb(255, 107, 157));
     }
-
     static void setCustomKaraokeActiveColor(Context context, int color) {
         prefs(context).edit().putInt(KEY_KARAOKE_ACTIVE_COLOR, opaque(color)).apply();
     }
-
-    static int karaokeActiveColor(Context context, int highlightColor) {
-        return karaokeSeparateActiveColor(context)
-                ? customKaraokeActiveColor(context) : highlightColor;
+    static int karaokeActiveColor(Context context, int highlightColor,
+                                  int paletteAccent, int trackAccent) {
+        if (!karaokeSeparateActiveColor(context)) return highlightColor;
+        int mode = karaokeActiveColorMode(context);
+        if (mode == KARAOKE_COLOR_CUSTOM) return customKaraokeActiveColor(context);
+        if (mode == KARAOKE_COLOR_TRACK) return trackAccent;
+        return paletteAccent;
+    }
+    static boolean usesTrackAccent(Context context) {
+        return colorSource(context) == COLOR_TRACK
+                || karaokeColorMode(context) == KARAOKE_COLOR_TRACK
+                || (karaokeSeparateActiveColor(context)
+                && karaokeActiveColorMode(context) == KARAOKE_COLOR_TRACK);
     }
 
     static int lyricsTimingOffsetMs(Context context) {

@@ -25,6 +25,11 @@ final class ThemePalette {
     }
 
     static ThemePalette resolve(Context context) {
+        return resolve(context, WidgetState.currentTrackId(context),
+                WidgetState.currentArtwork(context));
+    }
+
+    static ThemePalette resolve(Context context, String trackId, String artworkUrl) {
         int source = WidgetSettings.colorSource(context);
         if (source == WidgetSettings.COLOR_CUSTOM) {
             return new ThemePalette(
@@ -35,9 +40,18 @@ final class ThemePalette {
         }
         if (source == WidgetSettings.COLOR_WALLPAPER) {
             Integer wallpaper = wallpaperPrimary(context);
-            if (wallpaper != null) return fromWallpaper(context, wallpaper.intValue());
+            if (wallpaper != null) return fromSeed(context, wallpaper.intValue());
+        }
+        if (source == WidgetSettings.COLOR_TRACK) {
+            Integer artwork = ArtworkLoader.accent(context, trackId, artworkUrl);
+            if (artwork != null) return fromSeed(context, artwork.intValue());
         }
         return fromSystem(context);
+    }
+
+    static int trackAccent(Context context, String trackId, String artworkUrl, int fallback) {
+        Integer artwork = ArtworkLoader.accent(context, trackId, artworkUrl);
+        return artwork == null ? fallback : accentFromSeed(context, artwork.intValue());
     }
 
     private static ThemePalette fromSystem(Context context) {
@@ -54,17 +68,25 @@ final class ThemePalette {
         return new ThemePalette(surface, foreground, accent);
     }
 
-    private static ThemePalette fromWallpaper(Context context, int base) {
+    private static ThemePalette fromSeed(Context context, int base) {
         boolean night = isNight(context);
-        float[] hsv = new float[3];
-        Color.colorToHSV(base, hsv);
-        hsv[1] = Math.max(0.28f, Math.min(0.82f, hsv[1]));
-        hsv[2] = night ? Math.max(0.72f, hsv[2]) : Math.max(0.48f, Math.min(0.72f, hsv[2]));
-        int accent = Color.HSVToColor(hsv);
+        int accent = accentFromSeed(context, base);
         int surface = night ? blend(base, Color.rgb(14, 14, 16), 0.78f)
                 : blend(base, Color.WHITE, 0.84f);
         int foreground = night ? Color.rgb(247, 242, 247) : Color.rgb(28, 27, 31);
         return new ThemePalette(surface, foreground, accent);
+    }
+
+    private static int accentFromSeed(Context context, int base) {
+        boolean night = isNight(context);
+        float[] hsv = new float[3];
+        Color.colorToHSV(base, hsv);
+        // Do not invent a hue for genuinely monochrome cover art.
+        hsv[1] = hsv[1] < 0.08f ? 0f : Math.max(0.28f, Math.min(0.82f, hsv[1]));
+        hsv[2] = night
+                ? Math.max(0.72f, hsv[2])
+                : Math.max(0.42f, Math.min(0.72f, hsv[2]));
+        return Color.HSVToColor(hsv);
     }
 
     private static Integer wallpaperPrimary(Context context) {
@@ -109,7 +131,8 @@ final class ThemePalette {
     }
 
     static int alpha(int color, int alpha) {
-        return Color.argb(Math.max(0, Math.min(255, alpha)), Color.red(color), Color.green(color), Color.blue(color));
+        return Color.argb(Math.max(0, Math.min(255, alpha)),
+                Color.red(color), Color.green(color), Color.blue(color));
     }
 
     private static int opaque(int color) {

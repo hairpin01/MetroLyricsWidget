@@ -47,6 +47,8 @@ final class ArtworkLoader {
     private static Bitmap coverMemoryBitmap;
     private static String customMemoryKey = "";
     private static Bitmap customMemoryBitmap;
+    private static String accentMemoryKey = "";
+    private static Integer accentMemoryColor;
 
     private ArtworkLoader() {}
 
@@ -128,6 +130,110 @@ final class ArtworkLoader {
             }
         }
         return null;
+    }
+
+    // Returns the dominant usable color only for the requested track. Unlike cover(),
+    // this deliberately never falls back to the previous bitmap during transitions.
+    static Integer accent(Context context, String trackId, String artworkUrl) {
+        String key = cacheKey(trackId, artworkUrl);
+        if (key.length() == 0) return null;
+        synchronized (ArtworkLoader.class) {
+            if (key.equals(accentMemoryKey) && accentMemoryColor != null) {
+                return accentMemoryColor;
+            }
+        }
+        File file = artworkFile(context, key);
+        if (file == null || !file.isFile()) return null;
+        Bitmap bitmap = null;
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+            int largest = Math.max(bounds.outWidth, bounds.outHeight);
+            int sampleSize = 1;
+            while (largest / (sampleSize * 2) >= 96) sampleSize *= 2;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = sampleSize;
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+            if (bitmap == null) return null;
+            Integer color = Integer.valueOf(dominantAccent(bitmap));
+            synchronized (ArtworkLoader.class) {
+                accentMemoryKey = key;
+                accentMemoryColor = color;
+            }
+            return color;
+        } catch (Throwable ignored) {
+            return null;
+        } finally {
+            if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        }
+    }
+
+    private static int dominantAccent(Bitmap source) {
+        final int maxEdge = 72;
+        float scale = Math.min(1f, maxEdge / (float) Math.max(source.getWidth(), source.getHeight()));
+        Bitmap sample = scale < 1f
+                ? Bitmap.createScaledBitmap(source,
+                Math.max(1, Math.round(source.getWidth() * scale)),
+                Math.max(1, Math.round(source.getHeight() * scale)), true)
+                : source;
+        final int binCount = 24;
+        double[] weights = new double[binCount];
+        double[] reds = new double[binCount];
+        double[] greens = new double[binCount];
+        double[] blues = new double[binCount];
+        double neutralWeight = 0d;
+        double neutralRed = 0d;
+        double neutralGreen = 0d;
+        double neutralBlue = 0d;
+        float[] hsv = new float[3];
+        try {
+            for (int y = 0; y < sample.getHeight(); y++) {
+                for (int x = 0; x < sample.getWidth(); x++) {
+                    int pixel = sample.getPixel(x, y);
+                    if (Color.alpha(pixel) < 128) continue;
+                    Color.colorToHSV(pixel, hsv);
+                    float saturation = hsv[1];
+                    float value = hsv[2];
+                    if (value < 0.05f || (value > 0.97f && saturation < 0.04f)) continue;
+                    double neutral = 0.35d + (1d - Math.abs(value - 0.55f)) * 0.65d;
+                    neutralWeight += neutral;
+                    neutralRed += Color.red(pixel) * neutral;
+                    neutralGreen += Color.green(pixel) * neutral;
+                    neutralBlue += Color.blue(pixel) * neutral;
+                    if (saturation < 0.10f) continue;
+                    int bin = Math.min(binCount - 1,
+                            (int) Math.floor(hsv[0] * binCount / 360f));
+                    double vivid = 0.30d + saturation * 1.70d;
+                    double brightness = 0.55d + (1d - Math.abs(value - 0.58f)) * 0.65d;
+                    double weight = vivid * brightness;
+                    weights[bin] += weight;
+                    reds[bin] += Color.red(pixel) * weight;
+                    greens[bin] += Color.green(pixel) * weight;
+                    blues[bin] += Color.blue(pixel) * weight;
+                }
+            }
+            int best = -1;
+            for (int i = 0; i < binCount; i++) {
+                if (best < 0 || weights[i] > weights[best]) best = i;
+            }
+            if (best >= 0 && weights[best] >= 4d) {
+                return Color.rgb(
+                        (int) Math.round(reds[best] / weights[best]),
+                        (int) Math.round(greens[best] / weights[best]),
+                        (int) Math.round(blues[best] / weights[best]));
+            }
+            if (neutralWeight > 0d) {
+                return Color.rgb(
+                        (int) Math.round(neutralRed / neutralWeight),
+                        (int) Math.round(neutralGreen / neutralWeight),
+                        (int) Math.round(neutralBlue / neutralWeight));
+            }
+            return Color.GRAY;
+        } finally {
+            if (sample != source && !sample.isRecycled()) sample.recycle();
+        }
     }
 
     private interface Crop {

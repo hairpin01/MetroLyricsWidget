@@ -67,6 +67,28 @@ final class WidgetState {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
     }
 
+    static String currentTrackId(Context context) {
+        return clean(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(Constants.EXTRA_TRACK_ID, ""));
+    }
+
+    static String currentArtwork(Context context) {
+        return clean(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(Constants.EXTRA_ARTWORK, ""));
+    }
+
+    static void ensureCurrentArtwork(Context context, Runnable finished) {
+        String trackId = currentTrackId(context);
+        String artwork = currentArtwork(context);
+        if (trackId.length() == 0 && artwork.length() == 0) {
+            if (finished != null) finished.run();
+            return;
+        }
+        boolean pending = ArtworkLoader.ensureAsync(
+                context.getApplicationContext(), trackId, artwork, finished);
+        if (!pending && finished != null) finished.run();
+    }
+
     static void clearLineState(Context context, int widgetId) {
         SharedPreferences.Editor editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
         editor.remove("line_previous_" + widgetId);
@@ -118,7 +140,7 @@ final class WidgetState {
         }
         status = displayStatus(trackId, status, provider, playing, updatedAt);
 
-        ThemePalette palette = ThemePalette.resolve(context);
+        ThemePalette palette = ThemePalette.resolve(context, trackId, artwork);
         int backgroundMode = WidgetSettings.backgroundMode(context);
         int opacity = WidgetSettings.opacity(context);
         int dimming = WidgetSettings.dimming(context);
@@ -133,9 +155,14 @@ final class WidgetState {
                 portraitWidthDp, portraitHeightDp);
         boolean imageBackground = background != null && backgroundMode != WidgetSettings.BACKGROUND_COLOR;
         int currentLineColor = imageBackground ? Color.WHITE : palette.foreground;
-        int configuredKaraokeColor = WidgetSettings.karaokeColor(context, palette.accent);
+        int sideLineColor = imageBackground
+                ? Color.argb(158, 255, 255, 255) : palette.muted;
+        int trackAccent = ThemePalette.trackAccent(
+                context, trackId, artwork, palette.accent);
+        int configuredKaraokeColor = WidgetSettings.karaokeColor(
+                context, palette.accent, trackAccent);
         int configuredActiveColor = WidgetSettings.karaokeActiveColor(
-                context, configuredKaraokeColor);
+                context, configuredKaraokeColor, palette.accent, trackAccent);
         int karaokeColor = imageBackground
                 ? readableOnDark(configuredKaraokeColor) : configuredKaraokeColor;
         int activeKaraokeColor = imageBackground
@@ -153,6 +180,9 @@ final class WidgetState {
         boolean narrow = portraitWidthDp > 0 && portraitWidthDp < 260;
 
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_lyrics);
+        // Apply both flipper children's colors before setDisplayedChild. Otherwise the
+        // launcher can render the XML default (white) for the first animation frame.
+        setLineColors(views, sideLineColor, currentLineColor);
         views.setTextViewText(R.id.widget_title, title);
         views.setTextViewText(R.id.widget_status, status);
         views.setViewVisibility(R.id.widget_status, narrow ? View.GONE : View.VISIBLE);
@@ -236,7 +266,7 @@ final class WidgetState {
             int readableAccent = readableOnDark(palette.accent);
             views.setTextColor(R.id.widget_title, readableAccent);
             views.setTextColor(R.id.widget_status, Color.argb(210, 255, 255, 255));
-            setLineColors(views, Color.argb(158, 255, 255, 255), currentLineColor);
+            // Lyric colors were queued before the ViewFlipper switch above.
             if (showProgress) {
                 views.setInt(R.id.widget_progress, "setColorFilter", readableOnDark(palette.accent));
                 views.setInt(R.id.widget_progress_track, "setColorFilter", Color.WHITE);
@@ -251,7 +281,7 @@ final class WidgetState {
 
             views.setTextColor(R.id.widget_title, palette.accent);
             views.setTextColor(R.id.widget_status, palette.secondary);
-            setLineColors(views, palette.muted, currentLineColor);
+            // Lyric colors were queued before the ViewFlipper switch above.
             if (showProgress) {
                 views.setInt(R.id.widget_progress, "setColorFilter", palette.accent);
                 views.setInt(R.id.widget_progress_track, "setColorFilter", palette.foreground);
@@ -276,7 +306,8 @@ final class WidgetState {
         // not depend on a non-null bitmap because that bitmap may be the transition
         // fallback from the previous track.
         if ((trackId.length() != 0 || artwork.length() != 0)
-                && (showCover || backgroundMode == WidgetSettings.BACKGROUND_ARTWORK)) {
+                && (showCover || backgroundMode == WidgetSettings.BACKGROUND_ARTWORK
+                || WidgetSettings.usesTrackAccent(context))) {
             final Context app = context.getApplicationContext();
             ArtworkLoader.ensureAsync(app, trackId, artwork, new Runnable() {
                 @Override public void run() {
