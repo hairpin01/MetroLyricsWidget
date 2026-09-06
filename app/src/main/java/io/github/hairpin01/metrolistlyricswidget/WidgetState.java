@@ -13,6 +13,7 @@ import android.graphics.Typeface;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.View;
@@ -52,6 +53,8 @@ final class WidgetState {
                 intent.getIntExtra(Constants.EXTRA_ACTIVE_START, -1));
         editor.putInt(Constants.EXTRA_ACTIVE_END,
                 intent.getIntExtra(Constants.EXTRA_ACTIVE_END, -1));
+        editor.putBoolean(Constants.EXTRA_KARAOKE,
+                intent.getBooleanExtra(Constants.EXTRA_KARAOKE, false));
         editor.putLong("updated_at", System.currentTimeMillis());
         editor.apply();
     }
@@ -104,6 +107,7 @@ final class WidgetState {
         int highlightEnd = state.getInt(Constants.EXTRA_HIGHLIGHT_END, -1);
         int activeStart = state.getInt(Constants.EXTRA_ACTIVE_START, -1);
         int activeEnd = state.getInt(Constants.EXTRA_ACTIVE_END, -1);
+        boolean karaoke = state.getBoolean(Constants.EXTRA_KARAOKE, false);
         long updatedAt = state.getLong("updated_at", 0L);
 
         if (title.length() == 0) title = "MetroList Lyrics";
@@ -129,9 +133,11 @@ final class WidgetState {
                 portraitWidthDp, portraitHeightDp);
         boolean imageBackground = background != null && backgroundMode != WidgetSettings.BACKGROUND_COLOR;
         int currentLineColor = imageBackground ? Color.WHITE : palette.foreground;
-        int karaokeColor = imageBackground ? readableOnDark(palette.accent) : palette.accent;
-        CharSequence currentDisplay = karaokeText(
-                current, highlightEnd, activeStart, activeEnd, karaokeColor);
+        int configuredKaraokeColor = WidgetSettings.karaokeColor(context, palette.accent);
+        int karaokeColor = imageBackground
+                ? readableOnDark(configuredKaraokeColor) : configuredKaraokeColor;
+        CharSequence currentDisplay = karaokeText(context, current, karaoke,
+                highlightEnd, activeStart, activeEnd, currentLineColor, karaokeColor);
         // Adaptive layout: one-row widgets (3x1, 4x1…) have little vertical room, so
         // prev/next lines are dropped and the current line takes all remaining height.
         // Narrow widgets lose the status label (it steals title width) and get a
@@ -297,24 +303,45 @@ final class WidgetState {
         }
     }
 
-    private static CharSequence karaokeText(String text, int highlightEnd,
-                                               int activeStart, int activeEnd,
-                                               int highlightColor) {
-        if (text.length() == 0 || (highlightEnd <= 0 && activeStart < 0)) return text;
+    private static CharSequence karaokeText(Context context, String text, boolean karaoke,
+                                               int highlightEnd, int activeStart, int activeEnd,
+                                               int baseColor, int highlightColor) {
+        if (text.length() == 0 || !karaoke || !WidgetSettings.karaokeEnabled(context)) {
+            return text;
+        }
         int length = text.length();
         int sungEnd = Math.max(0, Math.min(length, highlightEnd));
         int tokenStart = Math.max(0, Math.min(length, activeStart));
         int tokenEnd = Math.max(tokenStart, Math.min(length, activeEnd));
+        boolean hasActive = activeStart >= 0 && tokenEnd > tokenStart;
+        boolean showTrail = WidgetSettings.karaokeTrail(context);
+        int unsungAlpha = Math.round(255f * WidgetSettings.karaokeUnsungOpacity(context) / 100f);
+        int unsungColor = ThemePalette.alpha(baseColor, unsungAlpha);
         SpannableString styled = new SpannableString(text);
-        if (sungEnd > 0) {
-            styled.setSpan(new ForegroundColorSpan(highlightColor), 0, sungEnd,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (showTrail) {
+            setTextColor(styled, highlightColor, 0, sungEnd);
+            setTextColor(styled, unsungColor, sungEnd, length);
+        } else if (hasActive) {
+            setTextColor(styled, unsungColor, 0, tokenStart);
+            setTextColor(styled, highlightColor, tokenStart, tokenEnd);
+            setTextColor(styled, unsungColor, tokenEnd, length);
+        } else {
+            setTextColor(styled, unsungColor, 0, length);
         }
-        if (activeStart >= 0 && tokenEnd > tokenStart) {
+        if (hasActive && WidgetSettings.karaokeBold(context)) {
             styled.setSpan(new StyleSpan(Typeface.BOLD), tokenStart, tokenEnd,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
+        if (hasActive && WidgetSettings.karaokePop(context)) {
+            styled.setSpan(new RelativeSizeSpan(1.12f), tokenStart, tokenEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
         return styled;
+    }
+    private static void setTextColor(SpannableString text, int color, int start, int end) {
+        if (end <= start) return;
+        text.setSpan(new ForegroundColorSpan(color), start, end,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
     private static void setLineColors(RemoteViews views, int sideColor, int currentColor) {

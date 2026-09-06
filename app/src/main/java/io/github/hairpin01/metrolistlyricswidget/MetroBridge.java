@@ -459,7 +459,8 @@ final class MetroBridge implements Runnable {
 
         KaraokeFrame frame = KaraokeFrame.at(currentLine, effectivePosition);
         sendSnapshot(previous, current, next, status, lyricProvider, playing,
-                positionMs, durationMs, frame.highlightEnd, frame.activeStart, frame.activeEnd, force);
+                positionMs, durationMs, frame.highlightEnd, frame.activeStart, frame.activeEnd,
+                currentLine != null && !currentLine.tokens.isEmpty(), force);
 
         if (!playing) return 700L;
         long nextBoundary = frame.nextBoundaryMs;
@@ -497,7 +498,7 @@ final class MetroBridge implements Runnable {
             boolean force
     ) {
         sendSnapshot(previous, current, next, status, provider, playing, position, duration,
-                -1, -1, -1, force);
+                -1, -1, -1, false, force);
     }
 
     private void sendSnapshot(
@@ -512,6 +513,7 @@ final class MetroBridge implements Runnable {
             int highlightEnd,
             int activeStart,
             int activeEnd,
+            boolean karaoke,
             boolean force
     ) {
         // Position must not be fully deduplicated: the widget progress bar is driven
@@ -520,7 +522,7 @@ final class MetroBridge implements Runnable {
         String payload = currentTrackId + '\u0001' + currentTitle + '\u0001' + currentArtist + '\u0001' + currentArtwork + '\u0001' +
                 previous + '\u0001' + current + '\u0001' + next + '\u0001' + status + '\u0001' + provider + '\u0001' + playing +
                 '\u0001' + highlightEnd + '\u0001' + activeStart + '\u0001' + activeEnd +
-                '\u0001' + (position / 1000L);
+                '\u0001' + karaoke + '\u0001' + (position / 1000L);
         if (!force && payload.equals(lastPayload)) return;
         lastPayload = payload;
         currentPrevious = previous;
@@ -548,6 +550,7 @@ final class MetroBridge implements Runnable {
             intent.putExtra(Constants.EXTRA_HIGHLIGHT_END, highlightEnd);
             intent.putExtra(Constants.EXTRA_ACTIVE_START, activeStart);
             intent.putExtra(Constants.EXTRA_ACTIVE_END, activeEnd);
+            intent.putExtra(Constants.EXTRA_KARAOKE, karaoke);
             context.sendBroadcast(intent);
         } catch (Throwable error) {
             log("widget broadcast failed: " + error);

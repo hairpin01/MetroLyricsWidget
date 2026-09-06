@@ -32,11 +32,15 @@ public class MainActivity extends Activity {
     private View root;
     private RadioGroup colorGroup;
     private RadioGroup backgroundGroup;
+    private RadioGroup karaokeColorGroup;
     private LinearLayout customColorsContainer;
+    private LinearLayout karaokeControlsContainer;
+    private LinearLayout karaokeCustomColorContainer;
     private View imagePickerContainer;
     private EditText surfaceInput;
     private EditText foregroundInput;
     private EditText accentInput;
+    private EditText karaokeColorInput;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +53,7 @@ public class MainActivity extends Activity {
         bindColorSettings();
         bindBackgroundSettings();
         bindFeatureSettings();
+        bindKaraokeSettings();
         bindTextSettings();
         bindActions();
     }
@@ -199,6 +204,77 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void bindKaraokeSettings() {
+        MaterialSwitch enabled = findViewById(R.id.karaoke_enabled_switch);
+        MaterialSwitch trail = findViewById(R.id.karaoke_trail_switch);
+        MaterialSwitch bold = findViewById(R.id.karaoke_bold_switch);
+        MaterialSwitch pop = findViewById(R.id.karaoke_pop_switch);
+        karaokeControlsContainer = findViewById(R.id.karaoke_controls_container);
+        karaokeCustomColorContainer = findViewById(R.id.karaoke_custom_color_container);
+        karaokeColorGroup = findViewById(R.id.karaoke_color_group);
+        karaokeColorInput = findViewById(R.id.karaoke_color_input);
+
+        enabled.setChecked(WidgetSettings.karaokeEnabled(this));
+        trail.setChecked(WidgetSettings.karaokeTrail(this));
+        bold.setChecked(WidgetSettings.karaokeBold(this));
+        pop.setChecked(WidgetSettings.karaokePop(this));
+        karaokeColorInput.setText(hex(WidgetSettings.customKaraokeColor(this)));
+        int colorMode = WidgetSettings.karaokeColorMode(this);
+        karaokeColorGroup.check(colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM
+                ? R.id.karaoke_color_custom : R.id.karaoke_color_accent);
+        updateKaraokeControls(enabled.isChecked(), colorMode);
+
+        enabled.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setKaraokeEnabled(this, checked);
+            updateKaraokeControls(checked, WidgetSettings.karaokeColorMode(this));
+            refreshWidgets();
+        });
+        trail.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setKaraokeTrail(this, checked);
+            refreshWidgets();
+        });
+        bold.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setKaraokeBold(this, checked);
+            refreshWidgets();
+        });
+        pop.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setKaraokePop(this, checked);
+            refreshWidgets();
+        });
+        karaokeColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int mode = checkedId == R.id.karaoke_color_custom
+                    ? WidgetSettings.KARAOKE_COLOR_CUSTOM
+                    : WidgetSettings.KARAOKE_COLOR_ACCENT;
+            WidgetSettings.setKaraokeColorMode(this, mode);
+            updateKaraokeControls(enabled.isChecked(), mode);
+            refreshWidgets();
+        });
+        findViewById(R.id.save_karaoke_color).setOnClickListener(view -> saveKaraokeColor());
+        bindSlider(
+                findViewById(R.id.karaoke_unsung_opacity_slider),
+                findViewById(R.id.karaoke_unsung_opacity_value),
+                WidgetSettings.karaokeUnsungOpacity(this),
+                "%",
+                value -> WidgetSettings.setKaraokeUnsungOpacity(this, value));
+    }
+    private void updateKaraokeControls(boolean enabled, int colorMode) {
+        karaokeControlsContainer.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        karaokeCustomColorContainer.setVisibility(enabled
+                && colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM ? View.VISIBLE : View.GONE);
+    }
+    private void saveKaraokeColor() {
+        try {
+            int color = parseColor(karaokeColorInput.getText().toString());
+            WidgetSettings.setCustomKaraokeColor(this, color);
+            WidgetSettings.setKaraokeColorMode(this, WidgetSettings.KARAOKE_COLOR_CUSTOM);
+            karaokeColorGroup.check(R.id.karaoke_color_custom);
+            updateKaraokeControls(WidgetSettings.karaokeEnabled(this), WidgetSettings.KARAOKE_COLOR_CUSTOM);
+            refreshWidgets();
+            showMessage("Цвет караоке применён");
+        } catch (IllegalArgumentException error) {
+            showMessage("Укажи цвет в формате #RRGGBB");
+        }
+    }
     private void bindTextSettings() {
         bindSlider(
                 findViewById(R.id.text_size_slider),
@@ -241,7 +317,7 @@ public class MainActivity extends Activity {
     private void confirmReset() {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Сбросить оформление?")
-                .setMessage("Цвета, фон, прозрачность и размер текста вернутся к значениям по умолчанию.")
+                .setMessage("Цвета, фон, караоке, анимации и размер текста вернутся к значениям по умолчанию.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сбросить", (dialog, which) -> {
                     WidgetSettings.reset(this);
@@ -322,8 +398,12 @@ public class MainActivity extends Activity {
         intent.putExtra(Constants.EXTRA_ARTIST, "демо");
         intent.putExtra(Constants.EXTRA_ARTWORK, "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
         intent.putExtra(Constants.EXTRA_PREVIOUS, "Предыдущая строка ближе");
-        intent.putExtra(Constants.EXTRA_CURRENT, "Текущая строка текста");
+        intent.putExtra(Constants.EXTRA_CURRENT, "Демо караоке по слогам");
         intent.putExtra(Constants.EXTRA_NEXT, "Следующая тоже рядом");
+        intent.putExtra(Constants.EXTRA_HIGHLIGHT_END, 12);
+        intent.putExtra(Constants.EXTRA_ACTIVE_START, 5);
+        intent.putExtra(Constants.EXTRA_ACTIVE_END, 12);
+        intent.putExtra(Constants.EXTRA_KARAOKE, true);
         intent.putExtra(Constants.EXTRA_STATUS, "играет · демо");
         intent.putExtra(Constants.EXTRA_PROVIDER, "демо");
         intent.putExtra(Constants.EXTRA_PLAYING, true);

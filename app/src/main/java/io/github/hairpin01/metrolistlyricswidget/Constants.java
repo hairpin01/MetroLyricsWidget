@@ -25,4 +25,5 @@ public final class Constants {
     public static final String EXTRA_HIGHLIGHT_END = "highlight_end";
     public static final String EXTRA_ACTIVE_START = "active_start";
     public static final String EXTRA_ACTIVE_END = "active_end";
+    public static final String EXTRA_KARAOKE = "karaoke";
 }
