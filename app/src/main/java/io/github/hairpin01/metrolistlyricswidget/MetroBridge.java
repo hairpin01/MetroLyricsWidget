@@ -7,6 +7,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import java.io.File;
 import java.lang.reflect.InvocationHandler;
@@ -62,6 +63,8 @@ final class MetroBridge implements Runnable {
     private volatile boolean stopped;
     private volatile List<LyricLine> lyricLines = Collections.emptyList();
     private volatile int lyricsOffsetMs;
+    private volatile int manualOffsetMs;
+    private long nextSettingsReadAtMs;
     private volatile String lyricProvider = "";
     private volatile String lyricsTrackId = "";
     private Future<?> loaderTask;
@@ -434,10 +437,33 @@ final class MetroBridge implements Runnable {
         return merged;
     }
 
+    private int manualLyricsOffsetMs() {
+        long now = SystemClock.elapsedRealtime();
+        if (now < nextSettingsReadAtMs) return manualOffsetMs;
+        nextSettingsReadAtMs = now + 750L;
+        Cursor cursor = null;
+        try {
+            cursor = context.getContentResolver().query(
+                    SettingsProvider.CONTENT_URI,
+                    new String[]{SettingsProvider.COLUMN_LYRICS_OFFSET_MS},
+                    null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int value = cursor.getInt(0);
+                manualOffsetMs = Math.max(WidgetSettings.LYRICS_OFFSET_MIN_MS,
+                        Math.min(WidgetSettings.LYRICS_OFFSET_MAX_MS, value));
+            }
+        } catch (Throwable ignored) {
+            // The standalone widget app/provider may be absent. Keep the last safe value.
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+        return manualOffsetMs;
+    }
+
     private long emitCurrentLine(long positionMs, long durationMs, boolean playing, boolean force) {
         List<LyricLine> lines = lyricLines;
         if (lines.isEmpty()) return playing ? 220L : 700L;
-        long effectivePosition = positionMs + lyricsOffsetMs + 100L;
+        long effectivePosition = positionMs + lyricsOffsetMs + manualLyricsOffsetMs() + 100L;
         int low = 0;
         int high = lines.size() - 1;
         int index = -1;

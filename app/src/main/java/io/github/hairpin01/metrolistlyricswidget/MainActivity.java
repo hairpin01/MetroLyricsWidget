@@ -1,5 +1,6 @@
 package io.github.hairpin01.metrolistlyricswidget;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
@@ -9,13 +10,17 @@ import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.View;
+import android.view.animation.LinearInterpolator;
 import android.view.WindowInsetsController;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -28,19 +33,44 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_IMAGE = 40;
+    private static final long KARAOKE_PREVIEW_DURATION_MS = 5_600L;
+    private static final String KARAOKE_PREVIEW_TEXT = "Слова оживают по слогам";
+    private static final int[] KARAOKE_PREVIEW_START = {0, 3, 6, 9, 11, 14, 17, 20};
+    private static final int[] KARAOKE_PREVIEW_END = {3, 5, 9, 11, 13, 16, 20, 23};
+    private static final long[] KARAOKE_PREVIEW_START_MS = {
+            300, 800, 1400, 1950, 2450, 3100, 3800, 4400
+    };
+    private static final long[] KARAOKE_PREVIEW_END_MS = {
+            800, 1250, 1950, 2450, 2900, 3500, 4400, 5000
+    };
 
     private View root;
     private RadioGroup colorGroup;
     private RadioGroup backgroundGroup;
     private RadioGroup karaokeColorGroup;
+    private RadioGroup karaokeHighlightModeGroup;
     private LinearLayout customColorsContainer;
     private LinearLayout karaokeControlsContainer;
     private LinearLayout karaokeCustomColorContainer;
+    private LinearLayout karaokeActiveColorContainer;
+    private LinearLayout karaokePopStrengthContainer;
     private View imagePickerContainer;
     private EditText surfaceInput;
     private EditText foregroundInput;
     private EditText accentInput;
     private EditText karaokeColorInput;
+    private EditText karaokeActiveColorInput;
+    private MaterialSwitch karaokeSeparateActiveColorSwitch;
+    private MaterialSwitch karaokePopSwitch;
+    private MaterialCardView karaokePreviewCard;
+    private TextView karaokePreviewCurrent;
+    private Slider karaokePreviewSlider;
+    private MaterialButton karaokePreviewPlay;
+    private ValueAnimator karaokePreviewAnimator;
+    private ThemePalette karaokePreviewPalette;
+    private boolean karaokePreviewPlaying = true;
+    private boolean karaokePreviewDragging;
+    private long karaokePreviewPositionMs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +86,29 @@ public class MainActivity extends Activity {
         bindKaraokeSettings();
         bindTextSettings();
         bindActions();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        karaokePreviewPalette = null;
+        updateKaraokePreview();
+        if (karaokePreviewPlaying) resumeKaraokePreview();
+    }
+
+    @Override
+    protected void onPause() {
+        if (karaokePreviewAnimator != null && karaokePreviewAnimator.isStarted()
+                && !karaokePreviewAnimator.isPaused()) {
+            karaokePreviewAnimator.pause();
+        }
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (karaokePreviewAnimator != null) karaokePreviewAnimator.cancel();
+        super.onDestroy();
     }
 
     private void configureSystemBars() {
@@ -103,6 +156,8 @@ public class MainActivity extends Activity {
                     : WidgetSettings.COLOR_SYSTEM;
             WidgetSettings.setColorSource(this, value);
             updateColorControls(value);
+            karaokePreviewPalette = null;
+            updateKaraokePreview();
             refreshWidgets();
         });
 
@@ -122,6 +177,8 @@ public class MainActivity extends Activity {
             WidgetSettings.setCustomColors(this, surface, foreground, accent);
             WidgetSettings.setColorSource(this, WidgetSettings.COLOR_CUSTOM);
             colorGroup.check(R.id.color_custom);
+            karaokePreviewPalette = null;
+            updateKaraokePreview();
             refreshWidgets();
             showMessage("Свои цвета применены");
         } catch (IllegalArgumentException error) {
@@ -206,39 +263,69 @@ public class MainActivity extends Activity {
 
     private void bindKaraokeSettings() {
         MaterialSwitch enabled = findViewById(R.id.karaoke_enabled_switch);
-        MaterialSwitch trail = findViewById(R.id.karaoke_trail_switch);
         MaterialSwitch bold = findViewById(R.id.karaoke_bold_switch);
-        MaterialSwitch pop = findViewById(R.id.karaoke_pop_switch);
+        karaokePopSwitch = findViewById(R.id.karaoke_pop_switch);
+        karaokeSeparateActiveColorSwitch = findViewById(
+                R.id.karaoke_separate_active_color_switch);
         karaokeControlsContainer = findViewById(R.id.karaoke_controls_container);
         karaokeCustomColorContainer = findViewById(R.id.karaoke_custom_color_container);
+        karaokeActiveColorContainer = findViewById(R.id.karaoke_active_color_container);
+        karaokePopStrengthContainer = findViewById(R.id.karaoke_pop_strength_container);
         karaokeColorGroup = findViewById(R.id.karaoke_color_group);
+        karaokeHighlightModeGroup = findViewById(R.id.karaoke_highlight_mode_group);
         karaokeColorInput = findViewById(R.id.karaoke_color_input);
+        karaokeActiveColorInput = findViewById(R.id.karaoke_active_color_input);
 
         enabled.setChecked(WidgetSettings.karaokeEnabled(this));
-        trail.setChecked(WidgetSettings.karaokeTrail(this));
         bold.setChecked(WidgetSettings.karaokeBold(this));
-        pop.setChecked(WidgetSettings.karaokePop(this));
+        karaokePopSwitch.setChecked(WidgetSettings.karaokePop(this));
+        karaokeSeparateActiveColorSwitch.setChecked(
+                WidgetSettings.karaokeSeparateActiveColor(this));
         karaokeColorInput.setText(hex(WidgetSettings.customKaraokeColor(this)));
+        karaokeActiveColorInput.setText(hex(WidgetSettings.customKaraokeActiveColor(this)));
+
         int colorMode = WidgetSettings.karaokeColorMode(this);
         karaokeColorGroup.check(colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM
                 ? R.id.karaoke_color_custom : R.id.karaoke_color_accent);
+        int highlightMode = WidgetSettings.karaokeMode(this);
+        karaokeHighlightModeGroup.check(
+                highlightMode == WidgetSettings.KARAOKE_MODE_ACTIVE_TOKEN
+                        ? R.id.karaoke_mode_active_token
+                        : highlightMode == WidgetSettings.KARAOKE_MODE_ACTIVE_WORD
+                        ? R.id.karaoke_mode_active_word : R.id.karaoke_mode_trail);
         updateKaraokeControls(enabled.isChecked(), colorMode);
 
         enabled.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setKaraokeEnabled(this, checked);
             updateKaraokeControls(checked, WidgetSettings.karaokeColorMode(this));
+            updateKaraokePreview();
             refreshWidgets();
         });
-        trail.setOnCheckedChangeListener((button, checked) -> {
-            WidgetSettings.setKaraokeTrail(this, checked);
+        karaokeHighlightModeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int mode = checkedId == R.id.karaoke_mode_active_token
+                    ? WidgetSettings.KARAOKE_MODE_ACTIVE_TOKEN
+                    : checkedId == R.id.karaoke_mode_active_word
+                    ? WidgetSettings.KARAOKE_MODE_ACTIVE_WORD
+                    : WidgetSettings.KARAOKE_MODE_TRAIL;
+            WidgetSettings.setKaraokeMode(this, mode);
+            updateKaraokePreview();
             refreshWidgets();
         });
         bold.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setKaraokeBold(this, checked);
+            updateKaraokePreview();
             refreshWidgets();
         });
-        pop.setOnCheckedChangeListener((button, checked) -> {
+        karaokePopSwitch.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setKaraokePop(this, checked);
+            updateKaraokeControls(enabled.isChecked(), WidgetSettings.karaokeColorMode(this));
+            updateKaraokePreview();
+            refreshWidgets();
+        });
+        karaokeSeparateActiveColorSwitch.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setKaraokeSeparateActiveColor(this, checked);
+            updateKaraokeControls(enabled.isChecked(), WidgetSettings.karaokeColorMode(this));
+            updateKaraokePreview();
             refreshWidgets();
         });
         karaokeColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
@@ -247,34 +334,219 @@ public class MainActivity extends Activity {
                     : WidgetSettings.KARAOKE_COLOR_ACCENT;
             WidgetSettings.setKaraokeColorMode(this, mode);
             updateKaraokeControls(enabled.isChecked(), mode);
+            updateKaraokePreview();
             refreshWidgets();
         });
-        findViewById(R.id.save_karaoke_color).setOnClickListener(view -> saveKaraokeColor());
+        findViewById(R.id.save_karaoke_color).setOnClickListener(
+                view -> saveKaraokeColor());
+        findViewById(R.id.save_karaoke_active_color).setOnClickListener(
+                view -> saveKaraokeActiveColor());
         bindSlider(
                 findViewById(R.id.karaoke_unsung_opacity_slider),
                 findViewById(R.id.karaoke_unsung_opacity_value),
                 WidgetSettings.karaokeUnsungOpacity(this),
                 "%",
                 value -> WidgetSettings.setKaraokeUnsungOpacity(this, value));
+        bindSlider(
+                findViewById(R.id.karaoke_pop_strength_slider),
+                findViewById(R.id.karaoke_pop_strength_value),
+                WidgetSettings.karaokePopStrength(this),
+                "%",
+                value -> WidgetSettings.setKaraokePopStrength(this, value));
+        bindTimingOffset();
+        bindKaraokePreview();
     }
+
     private void updateKaraokeControls(boolean enabled, int colorMode) {
         karaokeControlsContainer.setVisibility(enabled ? View.VISIBLE : View.GONE);
         karaokeCustomColorContainer.setVisibility(enabled
-                && colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM ? View.VISIBLE : View.GONE);
+                && colorMode == WidgetSettings.KARAOKE_COLOR_CUSTOM
+                ? View.VISIBLE : View.GONE);
+        karaokeActiveColorContainer.setVisibility(enabled
+                && karaokeSeparateActiveColorSwitch.isChecked()
+                ? View.VISIBLE : View.GONE);
+        karaokePopStrengthContainer.setVisibility(enabled && karaokePopSwitch.isChecked()
+                ? View.VISIBLE : View.GONE);
     }
+
     private void saveKaraokeColor() {
         try {
             int color = parseColor(karaokeColorInput.getText().toString());
             WidgetSettings.setCustomKaraokeColor(this, color);
             WidgetSettings.setKaraokeColorMode(this, WidgetSettings.KARAOKE_COLOR_CUSTOM);
             karaokeColorGroup.check(R.id.karaoke_color_custom);
-            updateKaraokeControls(WidgetSettings.karaokeEnabled(this), WidgetSettings.KARAOKE_COLOR_CUSTOM);
+            updateKaraokeControls(WidgetSettings.karaokeEnabled(this),
+                    WidgetSettings.KARAOKE_COLOR_CUSTOM);
+            updateKaraokePreview();
             refreshWidgets();
-            showMessage("Цвет караоке применён");
+            showMessage("Цвет пройденного текста применён");
         } catch (IllegalArgumentException error) {
             showMessage("Укажи цвет в формате #RRGGBB");
         }
     }
+
+    private void saveKaraokeActiveColor() {
+        try {
+            int color = parseColor(karaokeActiveColorInput.getText().toString());
+            WidgetSettings.setCustomKaraokeActiveColor(this, color);
+            WidgetSettings.setKaraokeSeparateActiveColor(this, true);
+            karaokeSeparateActiveColorSwitch.setChecked(true);
+            updateKaraokeControls(WidgetSettings.karaokeEnabled(this),
+                    WidgetSettings.karaokeColorMode(this));
+            updateKaraokePreview();
+            refreshWidgets();
+            showMessage("Цвет активного фрагмента применён");
+        } catch (IllegalArgumentException error) {
+            showMessage("Укажи цвет в формате #RRGGBB");
+        }
+    }
+
+    private void bindTimingOffset() {
+        Slider slider = findViewById(R.id.karaoke_timing_offset_slider);
+        TextView valueLabel = findViewById(R.id.karaoke_timing_offset_value);
+        int value = WidgetSettings.lyricsTimingOffsetMs(this);
+        slider.setValue(value);
+        valueLabel.setText(formatOffset(value));
+        slider.addOnChangeListener((control, current, fromUser) -> {
+            int rounded = Math.round(current / 50f) * 50;
+            valueLabel.setText(formatOffset(rounded));
+            if (fromUser) {
+                WidgetSettings.setLyricsTimingOffsetMs(this, rounded);
+                updateKaraokePreview();
+            }
+        });
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
+            @Override
+            public void onStartTrackingTouch(Slider control) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(Slider control) {
+                int rounded = Math.round(control.getValue() / 50f) * 50;
+                WidgetSettings.setLyricsTimingOffsetMs(MainActivity.this, rounded);
+                updateKaraokePreview();
+                refreshWidgets();
+            }
+        });
+        findViewById(R.id.karaoke_timing_offset_reset).setOnClickListener(view -> {
+            WidgetSettings.setLyricsTimingOffsetMs(this, 0);
+            slider.setValue(0f);
+            valueLabel.setText(formatOffset(0));
+            updateKaraokePreview();
+            refreshWidgets();
+        });
+    }
+
+    private void bindKaraokePreview() {
+        karaokePreviewCard = findViewById(R.id.karaoke_preview_card);
+        karaokePreviewCurrent = findViewById(R.id.karaoke_preview_current);
+        karaokePreviewSlider = findViewById(R.id.karaoke_preview_slider);
+        karaokePreviewPlay = findViewById(R.id.karaoke_preview_play);
+        karaokePreviewSlider.setValue(0f);
+        karaokePreviewSlider.addOnChangeListener((slider, value, fromUser) -> {
+            if (!fromUser) return;
+            karaokePreviewPositionMs = Math.round(
+                    KARAOKE_PREVIEW_DURATION_MS * value / 100f);
+            if (karaokePreviewAnimator != null && karaokePreviewAnimator.isStarted()) {
+                karaokePreviewAnimator.setCurrentPlayTime(karaokePreviewPositionMs);
+            }
+            updateKaraokePreview();
+        });
+        karaokePreviewSlider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
+            @Override
+            public void onStartTrackingTouch(Slider slider) {
+                karaokePreviewDragging = true;
+                if (karaokePreviewAnimator != null && karaokePreviewAnimator.isStarted()
+                        && !karaokePreviewAnimator.isPaused()) {
+                    karaokePreviewAnimator.pause();
+                }
+            }
+
+            @Override
+            public void onStopTrackingTouch(Slider slider) {
+                karaokePreviewDragging = false;
+                updateKaraokePreview();
+                if (karaokePreviewPlaying) resumeKaraokePreview();
+            }
+        });
+        karaokePreviewPlay.setOnClickListener(view -> {
+            karaokePreviewPlaying = !karaokePreviewPlaying;
+            if (karaokePreviewPlaying) {
+                resumeKaraokePreview();
+            } else if (karaokePreviewAnimator != null
+                    && karaokePreviewAnimator.isStarted()) {
+                karaokePreviewAnimator.pause();
+            }
+            updatePreviewPlayButton();
+        });
+
+        karaokePreviewAnimator = ValueAnimator.ofInt(0, (int) KARAOKE_PREVIEW_DURATION_MS);
+        karaokePreviewAnimator.setDuration(KARAOKE_PREVIEW_DURATION_MS);
+        karaokePreviewAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        karaokePreviewAnimator.setInterpolator(new LinearInterpolator());
+        karaokePreviewAnimator.addUpdateListener(animation -> {
+            if (karaokePreviewDragging) return;
+            karaokePreviewPositionMs = (Integer) animation.getAnimatedValue();
+            karaokePreviewSlider.setValue(100f * karaokePreviewPositionMs
+                    / KARAOKE_PREVIEW_DURATION_MS);
+            updateKaraokePreview();
+        });
+        updatePreviewPlayButton();
+        updateKaraokePreview();
+    }
+
+    private void resumeKaraokePreview() {
+        if (karaokePreviewAnimator == null || karaokePreviewDragging) return;
+        if (!karaokePreviewAnimator.isStarted()) {
+            karaokePreviewAnimator.start();
+            karaokePreviewAnimator.setCurrentPlayTime(karaokePreviewPositionMs);
+        } else if (karaokePreviewAnimator.isPaused()) {
+            karaokePreviewAnimator.resume();
+        }
+    }
+
+    private void updatePreviewPlayButton() {
+        if (karaokePreviewPlay != null) {
+            karaokePreviewPlay.setText(karaokePreviewPlaying ? "Пауза" : "Запустить");
+        }
+    }
+
+    private void updateKaraokePreview() {
+        if (karaokePreviewCurrent == null) return;
+        long effectivePosition = karaokePreviewPositionMs
+                + WidgetSettings.lyricsTimingOffsetMs(this);
+        int highlightEnd = -1;
+        int activeStart = -1;
+        int activeEnd = -1;
+        for (int i = 0; i < KARAOKE_PREVIEW_START.length; i++) {
+            if (KARAOKE_PREVIEW_START_MS[i] <= effectivePosition) {
+                highlightEnd = Math.max(highlightEnd, KARAOKE_PREVIEW_END[i]);
+                if (effectivePosition < KARAOKE_PREVIEW_END_MS[i]) {
+                    activeStart = KARAOKE_PREVIEW_START[i];
+                    activeEnd = KARAOKE_PREVIEW_END[i];
+                }
+            }
+        }
+        ThemePalette palette = karaokePreviewPalette;
+        if (palette == null) {
+            palette = ThemePalette.resolve(this);
+            karaokePreviewPalette = palette;
+        }
+        int highlightColor = WidgetSettings.karaokeColor(this, palette.accent);
+        int activeColor = WidgetSettings.karaokeActiveColor(this, highlightColor);
+        karaokePreviewCard.setCardBackgroundColor(palette.surface);
+        karaokePreviewCurrent.setTextColor(palette.foreground);
+        karaokePreviewCurrent.setTextSize(TypedValue.COMPLEX_UNIT_SP,
+                WidgetSettings.textSize(this));
+        karaokePreviewCurrent.setText(WidgetState.karaokeText(this,
+                KARAOKE_PREVIEW_TEXT, true, highlightEnd, activeStart, activeEnd,
+                palette.foreground, highlightColor, activeColor));
+    }
+
+    private static String formatOffset(int value) {
+        return (value > 0 ? "+" : "") + value + " мс";
+    }
+
     private void bindTextSettings() {
         bindSlider(
                 findViewById(R.id.text_size_slider),
@@ -288,8 +560,14 @@ public class MainActivity extends Activity {
                             String suffix, ValueSaver saver) {
         slider.setValue(value);
         valueLabel.setText(value + suffix);
-        slider.addOnChangeListener((control, current, fromUser) ->
-                valueLabel.setText(Math.round(current) + suffix));
+        slider.addOnChangeListener((control, current, fromUser) -> {
+            int rounded = Math.round(current);
+            valueLabel.setText(rounded + suffix);
+            if (fromUser) {
+                saver.save(rounded);
+                updateKaraokePreview();
+            }
+        });
         slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
             @Override
             public void onStartTrackingTouch(Slider control) {
@@ -298,6 +576,7 @@ public class MainActivity extends Activity {
             @Override
             public void onStopTrackingTouch(Slider control) {
                 saver.save(Math.round(control.getValue()));
+                updateKaraokePreview();
                 refreshWidgets();
             }
         });

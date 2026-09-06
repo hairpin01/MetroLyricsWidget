@@ -537,6 +537,66 @@
                         android:text="Анимация по таймкодам"
                         android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="16dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Живой предпросмотр"
+                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                        android:textColor="?attr/colorOnSurface" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Изменения цветов, режима, размера и синхронизации отображаются сразу."
+                        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/karaoke_preview_card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        app:cardBackgroundColor="?attr/colorSurfaceContainerHighest"
+                        app:cardCornerRadius="20dp"
+                        app:cardElevation="0dp">
+
+                        <TextView
+                            android:id="@+id/karaoke_preview_current"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:minHeight="96dp"
+                            android:padding="18dp"
+                            android:text="Слова оживают по слогам"
+                            android:textAlignment="center"
+                            android:textAppearance="@style/TextAppearance.Material3.TitleLarge"
+                            android:textColor="?attr/colorOnSurface" />
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/karaoke_preview_slider"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:valueFrom="0"
+                        android:valueTo="100"
+                        app:labelBehavior="gone" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/karaoke_preview_play"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="48dp"
+                        android:text="Пауза" />
+
                     <LinearLayout
                         android:id="@+id/karaoke_controls_container"
                         android:layout_width="match_parent"
@@ -546,14 +606,54 @@
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"
-                            android:layout_marginTop="8dp"
+                            android:layout_marginTop="20dp"
                             android:layout_marginBottom="16dp"
                             android:background="?attr/colorOutlineVariant" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Цвет подсветки"
+                            android:text="Режим подсветки"
+                            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                            android:textColor="?attr/colorOnSurface" />
+
+                        <RadioGroup
+                            android:id="@+id/karaoke_highlight_mode_group"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="vertical">
+
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/karaoke_mode_trail"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:text="Пройденный текст и активный слог"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/karaoke_mode_active_token"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:text="Только активный слог"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/karaoke_mode_active_word"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:text="Активное слово целиком"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+                        </RadioGroup>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:text="Цвет пройденного текста"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                             android:textColor="?attr/colorOnSurface" />
 
@@ -592,7 +692,7 @@
                                 style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:hint="Цвет караоке"
+                                android:hint="Цвет пройденного текста"
                                 app:helperText="#RRGGBB">
 
                                 <com.google.android.material.textfield.TextInputEditText
@@ -612,6 +712,48 @@
                                 android:layout_marginTop="8dp"
                                 android:minHeight="52dp"
                                 android:text="Применить цвет" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/karaoke_separate_active_color_switch"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:minHeight="52dp"
+                            android:text="Отдельный цвет активного фрагмента"
+                            android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                        <LinearLayout
+                            android:id="@+id/karaoke_active_color_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:visibility="gone">
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:hint="Цвет активного фрагмента"
+                                app:helperText="#RRGGBB">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/karaoke_active_color_input"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="textCapCharacters"
+                                    android:maxLength="9"
+                                    android:singleLine="true" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/save_karaoke_active_color"
+                                style="@style/Widget.Material3.Button.TonalButton"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:minHeight="52dp"
+                                android:text="Применить активный цвет" />
                         </LinearLayout>
 
                         <LinearLayout
@@ -648,19 +790,11 @@
                             app:labelBehavior="gone" />
 
                         <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/karaoke_trail_switch"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:minHeight="52dp"
-                            android:text="Подсвечивать пройденный текст"
-                            android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
                             android:id="@+id/karaoke_bold_switch"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:minHeight="52dp"
-                            android:text="Жирный активный слог"
+                            android:text="Жирный активный фрагмент"
                             android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
                         <com.google.android.material.materialswitch.MaterialSwitch
@@ -668,14 +802,117 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:minHeight="52dp"
-                            android:text="Пульс активного слога"
+                            android:text="Увеличивать активный фрагмент"
                             android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                        <LinearLayout
+                            android:id="@+id/karaoke_pop_strength_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="Увеличение"
+                                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+                                    android:textColor="?attr/colorOnSurface" />
+
+                                <TextView
+                                    android:id="@+id/karaoke_pop_strength_value"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="12%"
+                                    android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                                    android:textColor="?attr/colorPrimary" />
+                            </LinearLayout>
+
+                            <com.google.android.material.slider.Slider
+                                android:id="@+id/karaoke_pop_strength_slider"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:stepSize="1"
+                                android:valueFrom="4"
+                                android:valueTo="24"
+                                app:labelBehavior="gone" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginTop="16dp"
+                            android:layout_marginBottom="16dp"
+                            android:background="?attr/colorOutlineVariant" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Синхронизация текста"
+                            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                            android:textColor="?attr/colorOnSurface" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="Положительное значение показывает подсветку раньше, отрицательное — позже. Поправка складывается со смещением MetroList."
+                            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="Ручная поправка"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+                                android:textColor="?attr/colorOnSurface" />
+
+                            <TextView
+                                android:id="@+id/karaoke_timing_offset_value"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0 мс"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                                android:textColor="?attr/colorPrimary" />
+                        </LinearLayout>
+
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/karaoke_timing_offset_slider"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:stepSize="50"
+                            android:valueFrom="-2000"
+                            android:valueTo="2000"
+                            app:labelBehavior="gone" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/karaoke_timing_offset_reset"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="48dp"
+                            android:text="Сбросить поправку" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:text="Системный AppWidget меняет эффект шагами на границах слов и слогов; непрерывный shader-анимационный переход лаунчер не поддерживает."
+                            android:text="Системный AppWidget меняет эффект шагами на границах слов и слогов; непрерывный shader-переход лаунчер не поддерживает."
                             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>

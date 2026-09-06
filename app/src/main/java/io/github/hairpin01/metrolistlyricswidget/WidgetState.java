@@ -134,10 +134,15 @@ final class WidgetState {
         boolean imageBackground = background != null && backgroundMode != WidgetSettings.BACKGROUND_COLOR;
         int currentLineColor = imageBackground ? Color.WHITE : palette.foreground;
         int configuredKaraokeColor = WidgetSettings.karaokeColor(context, palette.accent);
+        int configuredActiveColor = WidgetSettings.karaokeActiveColor(
+                context, configuredKaraokeColor);
         int karaokeColor = imageBackground
                 ? readableOnDark(configuredKaraokeColor) : configuredKaraokeColor;
+        int activeKaraokeColor = imageBackground
+                ? readableOnDark(configuredActiveColor) : configuredActiveColor;
         CharSequence currentDisplay = karaokeText(context, current, karaoke,
-                highlightEnd, activeStart, activeEnd, currentLineColor, karaokeColor);
+                highlightEnd, activeStart, activeEnd, currentLineColor, karaokeColor,
+                activeKaraokeColor);
         // Adaptive layout: one-row widgets (3x1, 4x1…) have little vertical room, so
         // prev/next lines are dropped and the current line takes all remaining height.
         // Narrow widgets lose the status label (it steals title width) and get a
@@ -303,9 +308,9 @@ final class WidgetState {
         }
     }
 
-    private static CharSequence karaokeText(Context context, String text, boolean karaoke,
-                                               int highlightEnd, int activeStart, int activeEnd,
-                                               int baseColor, int highlightColor) {
+    static CharSequence karaokeText(Context context, String text, boolean karaoke,
+                                      int highlightEnd, int activeStart, int activeEnd,
+                                      int baseColor, int highlightColor, int activeColor) {
         if (text.length() == 0 || !karaoke || !WidgetSettings.karaokeEnabled(context)) {
             return text;
         }
@@ -314,30 +319,41 @@ final class WidgetState {
         int tokenStart = Math.max(0, Math.min(length, activeStart));
         int tokenEnd = Math.max(tokenStart, Math.min(length, activeEnd));
         boolean hasActive = activeStart >= 0 && tokenEnd > tokenStart;
-        boolean showTrail = WidgetSettings.karaokeTrail(context);
-        int unsungAlpha = Math.round(255f * WidgetSettings.karaokeUnsungOpacity(context) / 100f);
+        int effectStart = tokenStart;
+        int effectEnd = tokenEnd;
+        int mode = WidgetSettings.karaokeMode(context);
+        if (hasActive && mode == WidgetSettings.KARAOKE_MODE_ACTIVE_WORD) {
+            while (effectStart > 0 && !Character.isWhitespace(text.charAt(effectStart - 1))) {
+                effectStart--;
+            }
+            while (effectEnd < length && !Character.isWhitespace(text.charAt(effectEnd))) {
+                effectEnd++;
+            }
+        }
+
+        int unsungAlpha = Math.round(255f
+                * WidgetSettings.karaokeUnsungOpacity(context) / 100f);
         int unsungColor = ThemePalette.alpha(baseColor, unsungAlpha);
         SpannableString styled = new SpannableString(text);
-        if (showTrail) {
+        setTextColor(styled, unsungColor, 0, length);
+        if (mode == WidgetSettings.KARAOKE_MODE_TRAIL) {
             setTextColor(styled, highlightColor, 0, sungEnd);
-            setTextColor(styled, unsungColor, sungEnd, length);
-        } else if (hasActive) {
-            setTextColor(styled, unsungColor, 0, tokenStart);
-            setTextColor(styled, highlightColor, tokenStart, tokenEnd);
-            setTextColor(styled, unsungColor, tokenEnd, length);
-        } else {
-            setTextColor(styled, unsungColor, 0, length);
+        }
+        if (hasActive) {
+            setTextColor(styled, activeColor, effectStart, effectEnd);
         }
         if (hasActive && WidgetSettings.karaokeBold(context)) {
-            styled.setSpan(new StyleSpan(Typeface.BOLD), tokenStart, tokenEnd,
+            styled.setSpan(new StyleSpan(Typeface.BOLD), effectStart, effectEnd,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         if (hasActive && WidgetSettings.karaokePop(context)) {
-            styled.setSpan(new RelativeSizeSpan(1.12f), tokenStart, tokenEnd,
+            float scale = 1f + WidgetSettings.karaokePopStrength(context) / 100f;
+            styled.setSpan(new RelativeSizeSpan(scale), effectStart, effectEnd,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return styled;
     }
+
     private static void setTextColor(SpannableString text, int color, int start, int end) {
         if (end <= start) return;
         text.setSpan(new ForegroundColorSpan(color), start, end,

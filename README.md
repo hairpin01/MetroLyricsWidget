@@ -22,7 +22,7 @@ The highlight follows LyricsPlus word and syllable timestamps directly on the ho
   <img src="assets/karaoke-demo.webp" width="760" alt="LyricsPlus word and syllable karaoke highlighting in the MetroLyrics widget" />
 </p>
 
-To preview the styling without waiting for a compatible track, open **MetroLyrics** and press **Демо (Demo)**. Highlight color, unsung-text opacity, trail highlighting, bold active text, and the active-syllable pop are configurable in the **Karaoke** section.
+To preview the styling without waiting for a compatible track, open **MetroLyrics** and press **Демо (Demo)**. The **Karaoke** section also has a live animated preview, three highlight modes (trail, active syllable, or active word), separate trail/active colors, adjustable bold/pop effects, unsung-text opacity, and a global ±2000 ms timing correction.
 
 ## Requirements
 

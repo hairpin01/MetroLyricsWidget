@@ -10,12 +10,16 @@ final class WidgetSettings {
     static final int COLOR_SYSTEM = 0;
     static final int COLOR_WALLPAPER = 1;
     static final int COLOR_CUSTOM = 2;
-
     static final int BACKGROUND_COLOR = 0;
     static final int BACKGROUND_ARTWORK = 1;
     static final int BACKGROUND_IMAGE = 2;
     static final int KARAOKE_COLOR_ACCENT = 0;
     static final int KARAOKE_COLOR_CUSTOM = 1;
+    static final int KARAOKE_MODE_TRAIL = 0;
+    static final int KARAOKE_MODE_ACTIVE_TOKEN = 1;
+    static final int KARAOKE_MODE_ACTIVE_WORD = 2;
+    static final int LYRICS_OFFSET_MIN_MS = -2000;
+    static final int LYRICS_OFFSET_MAX_MS = 2000;
 
     private static final String KEY_COLOR_SOURCE = "color_source";
     private static final String KEY_BACKGROUND = "background_mode";
@@ -30,12 +34,18 @@ final class WidgetSettings {
     private static final String KEY_SHOW_PROGRESS = "show_progress";
     private static final String KEY_ANIMATE_LINES = "animate_lines";
     private static final String KEY_KARAOKE_ENABLED = "karaoke_enabled";
+    // Kept to migrate settings from builds where the trail was a switch.
     private static final String KEY_KARAOKE_TRAIL = "karaoke_trail";
+    private static final String KEY_KARAOKE_MODE = "karaoke_highlight_mode";
     private static final String KEY_KARAOKE_BOLD = "karaoke_bold";
     private static final String KEY_KARAOKE_POP = "karaoke_pop";
+    private static final String KEY_KARAOKE_POP_STRENGTH = "karaoke_pop_strength";
     private static final String KEY_KARAOKE_UNSUNG_OPACITY = "karaoke_unsung_opacity";
     private static final String KEY_KARAOKE_COLOR_MODE = "karaoke_color_mode";
     private static final String KEY_KARAOKE_CUSTOM_COLOR = "karaoke_custom_color";
+    private static final String KEY_KARAOKE_SEPARATE_ACTIVE_COLOR = "karaoke_separate_active_color";
+    private static final String KEY_KARAOKE_ACTIVE_COLOR = "karaoke_active_color";
+    private static final String KEY_LYRICS_TIMING_OFFSET_MS = "lyrics_timing_offset_ms";
 
     private WidgetSettings() {}
 
@@ -135,57 +145,130 @@ final class WidgetSettings {
     static void setAnimateLines(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_ANIMATE_LINES, value).apply();
     }
+
     static boolean karaokeEnabled(Context context) {
         return prefs(context).getBoolean(KEY_KARAOKE_ENABLED, true);
     }
+
     static void setKaraokeEnabled(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_KARAOKE_ENABLED, value).apply();
     }
-    static boolean karaokeTrail(Context context) {
-        return prefs(context).getBoolean(KEY_KARAOKE_TRAIL, true);
+
+    static int karaokeMode(Context context) {
+        SharedPreferences settings = prefs(context);
+        if (settings.contains(KEY_KARAOKE_MODE)) {
+            return clamp(settings.getInt(KEY_KARAOKE_MODE, KARAOKE_MODE_TRAIL),
+                    KARAOKE_MODE_TRAIL, KARAOKE_MODE_ACTIVE_WORD);
+        }
+        return settings.getBoolean(KEY_KARAOKE_TRAIL, true)
+                ? KARAOKE_MODE_TRAIL : KARAOKE_MODE_ACTIVE_TOKEN;
     }
-    static void setKaraokeTrail(Context context, boolean value) {
-        prefs(context).edit().putBoolean(KEY_KARAOKE_TRAIL, value).apply();
+
+    static void setKaraokeMode(Context context, int value) {
+        int mode = clamp(value, KARAOKE_MODE_TRAIL, KARAOKE_MODE_ACTIVE_WORD);
+        prefs(context).edit()
+                .putInt(KEY_KARAOKE_MODE, mode)
+                .putBoolean(KEY_KARAOKE_TRAIL, mode == KARAOKE_MODE_TRAIL)
+                .apply();
     }
+
     static boolean karaokeBold(Context context) {
         return prefs(context).getBoolean(KEY_KARAOKE_BOLD, true);
     }
+
     static void setKaraokeBold(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_KARAOKE_BOLD, value).apply();
     }
+
     static boolean karaokePop(Context context) {
         return prefs(context).getBoolean(KEY_KARAOKE_POP, false);
     }
+
     static void setKaraokePop(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_KARAOKE_POP, value).apply();
     }
+
+    static int karaokePopStrength(Context context) {
+        return clamp(prefs(context).getInt(KEY_KARAOKE_POP_STRENGTH, 12), 4, 24);
+    }
+
+    static void setKaraokePopStrength(Context context, int value) {
+        prefs(context).edit().putInt(KEY_KARAOKE_POP_STRENGTH, clamp(value, 4, 24)).apply();
+    }
+
     static int karaokeUnsungOpacity(Context context) {
         return clamp(prefs(context).getInt(KEY_KARAOKE_UNSUNG_OPACITY, 62), 35, 100);
     }
+
     static void setKaraokeUnsungOpacity(Context context, int value) {
-        prefs(context).edit().putInt(KEY_KARAOKE_UNSUNG_OPACITY,
-                clamp(value, 35, 100)).apply();
+        prefs(context).edit().putInt(KEY_KARAOKE_UNSUNG_OPACITY, clamp(value, 35, 100)).apply();
     }
+
     static int karaokeColorMode(Context context) {
         return clamp(prefs(context).getInt(KEY_KARAOKE_COLOR_MODE, KARAOKE_COLOR_ACCENT),
                 KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_CUSTOM);
     }
+
     static void setKaraokeColorMode(Context context, int value) {
         prefs(context).edit().putInt(KEY_KARAOKE_COLOR_MODE,
                 clamp(value, KARAOKE_COLOR_ACCENT, KARAOKE_COLOR_CUSTOM)).apply();
     }
+
     static int customKaraokeColor(Context context) {
         return prefs(context).getInt(KEY_KARAOKE_CUSTOM_COLOR, Color.rgb(255, 214, 10));
     }
+
     static void setCustomKaraokeColor(Context context, int color) {
         prefs(context).edit().putInt(KEY_KARAOKE_CUSTOM_COLOR, opaque(color)).apply();
     }
+
     static int karaokeColor(Context context, int paletteAccent) {
         return karaokeColorMode(context) == KARAOKE_COLOR_CUSTOM
                 ? customKaraokeColor(context) : paletteAccent;
     }
+
+    static boolean karaokeSeparateActiveColor(Context context) {
+        return prefs(context).getBoolean(KEY_KARAOKE_SEPARATE_ACTIVE_COLOR, false);
+    }
+
+    static void setKaraokeSeparateActiveColor(Context context, boolean value) {
+        prefs(context).edit().putBoolean(KEY_KARAOKE_SEPARATE_ACTIVE_COLOR, value).apply();
+    }
+
+    static int customKaraokeActiveColor(Context context) {
+        return prefs(context).getInt(KEY_KARAOKE_ACTIVE_COLOR, Color.rgb(255, 107, 157));
+    }
+
+    static void setCustomKaraokeActiveColor(Context context, int color) {
+        prefs(context).edit().putInt(KEY_KARAOKE_ACTIVE_COLOR, opaque(color)).apply();
+    }
+
+    static int karaokeActiveColor(Context context, int highlightColor) {
+        return karaokeSeparateActiveColor(context)
+                ? customKaraokeActiveColor(context) : highlightColor;
+    }
+
+    static int lyricsTimingOffsetMs(Context context) {
+        return clamp(prefs(context).getInt(KEY_LYRICS_TIMING_OFFSET_MS, 0),
+                LYRICS_OFFSET_MIN_MS, LYRICS_OFFSET_MAX_MS);
+    }
+
+    static void setLyricsTimingOffsetMs(Context context, int value) {
+        prefs(context).edit().putInt(KEY_LYRICS_TIMING_OFFSET_MS,
+                clamp(value, LYRICS_OFFSET_MIN_MS, LYRICS_OFFSET_MAX_MS)).apply();
+        notifySettingsChanged(context);
+    }
+
     static void reset(Context context) {
         prefs(context).edit().clear().apply();
+        notifySettingsChanged(context);
+    }
+
+    private static void notifySettingsChanged(Context context) {
+        try {
+            context.getContentResolver().notifyChange(SettingsProvider.CONTENT_URI, null);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static int opaque(int color) {
