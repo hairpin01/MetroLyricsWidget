@@ -31,6 +31,7 @@ final class ArtworkLoader {
     private static final int DEFAULT_BACKGROUND_HEIGHT = 270;
     private static final int MAX_BACKGROUND_PIXELS = DEFAULT_BACKGROUND_WIDTH * DEFAULT_BACKGROUND_HEIGHT;
     private static final int MAX_BACKGROUND_EDGE = 720;
+    private static final float WIDGET_CORNER_RADIUS_DP = 26f;
     private static final int COVER_SIZE = 240;
     // Matches the 12dp/52dp ratio used by widget_cover_placeholder.xml so the
     // real artwork and the placeholder read as the same rounded shape.
@@ -52,12 +53,16 @@ final class ArtworkLoader {
     static Bitmap background(Context context, int mode, String trackId, String artworkUrl,
                              int widgetWidthDp, int widgetHeightDp) {
         final int[] target = backgroundSize(widgetWidthDp, widgetHeightDp);
+        final float[] radii = backgroundCornerRadii(
+                widgetWidthDp, widgetHeightDp, target[0], target[1]);
         if (mode == WidgetSettings.BACKGROUND_IMAGE) {
-            return customImage(context, WidgetSettings.imageUri(context), target[0], target[1]);
+            return customImage(context, WidgetSettings.imageUri(context),
+                    target[0], target[1], radii[0], radii[1]);
         }
         if (mode == WidgetSettings.BACKGROUND_ARTWORK) {
             String key = cacheKey(trackId, artworkUrl);
-            String renderedKey = key + "@" + target[0] + "x" + target[1];
+            String renderedKey = key + "@" + target[0] + "x" + target[1]
+                    + ":r" + Math.round(radii[0]) + "x" + Math.round(radii[1]);
             synchronized (ArtworkLoader.class) {
                 if (renderedKey.equals(artworkMemoryKey) && artworkMemoryBitmap != null
                         && !artworkMemoryBitmap.isRecycled()) return artworkMemoryBitmap;
@@ -66,7 +71,7 @@ final class ArtworkLoader {
             if (file != null && file.isFile()) {
                 Bitmap bitmap = decode(file, new Crop() {
                     @Override public Bitmap apply(Bitmap source) {
-                        return crop(source, target[0], target[1]);
+                        return crop(source, target[0], target[1], radii[0], radii[1]);
                     }
                 });
                 if (bitmap != null) {
@@ -186,9 +191,11 @@ final class ArtworkLoader {
         });
     }
 
-    private static Bitmap customImage(Context context, String uriString, int width, int height) {
+    private static Bitmap customImage(Context context, String uriString, int width, int height,
+                                      float radiusX, float radiusY) {
         if (uriString == null || uriString.length() == 0) return null;
-        String renderedKey = uriString + "@" + width + "x" + height;
+        String renderedKey = uriString + "@" + width + "x" + height
+                + ":r" + Math.round(radiusX) + "x" + Math.round(radiusY);
         synchronized (ArtworkLoader.class) {
             if (renderedKey.equals(customMemoryKey) && customMemoryBitmap != null
                     && !customMemoryBitmap.isRecycled()) {
@@ -199,7 +206,7 @@ final class ArtworkLoader {
         try {
             input = context.getContentResolver().openInputStream(Uri.parse(uriString));
             Bitmap source = BitmapFactory.decodeStream(input);
-            Bitmap result = crop(source, width, height);
+            Bitmap result = crop(source, width, height, radiusX, radiusY);
             if (source != null && source != result) source.recycle();
             synchronized (ArtworkLoader.class) {
                 customMemoryKey = renderedKey;
@@ -229,14 +236,25 @@ final class ArtworkLoader {
         }
         return new int[]{width, height};
     }
-    private static Bitmap crop(Bitmap source, int width, int height) {
+    private static float[] backgroundCornerRadii(int widgetWidthDp, int widgetHeightDp,
+                                                  int bitmapWidth, int bitmapHeight) {
+        // The panel and scrim use 26dp. Bake that exact radius into the bitmap,
+        // compensating for the bitmap-to-widget scale on each axis.
+        int widthDp = widgetWidthDp > 0 ? widgetWidthDp : 250;
+        int heightDp = widgetHeightDp > 0 ? widgetHeightDp : 110;
+        return new float[]{
+                WIDGET_CORNER_RADIUS_DP * bitmapWidth / widthDp,
+                WIDGET_CORNER_RADIUS_DP * bitmapHeight / heightDp
+        };
+    }
+    private static Bitmap crop(Bitmap source, int width, int height,
+                               float radiusX, float radiusY) {
         if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) return null;
         Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(result);
         Path rounded = new Path();
-        float cornerRadius = Math.max(12f, Math.min(width, height) * 0.13f);
         rounded.addRoundRect(new RectF(0f, 0f, width, height),
-                cornerRadius, cornerRadius, Path.Direction.CW);
+                radiusX, radiusY, Path.Direction.CW);
         canvas.clipPath(rounded);
         float scale = Math.max(width / (float) source.getWidth(), height / (float) source.getHeight());
         int drawWidth = Math.round(source.getWidth() * scale);
