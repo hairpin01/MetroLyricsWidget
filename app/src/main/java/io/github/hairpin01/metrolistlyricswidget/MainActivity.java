@@ -10,6 +10,8 @@ import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
@@ -34,6 +36,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private static final int REQUEST_IMAGE = 40;
     private static final long KARAOKE_PREVIEW_DURATION_MS = 5_600L;
+    private static final long WIDGET_REFRESH_INTERVAL_MS = 90L;
     private static final String KARAOKE_PREVIEW_TEXT = "Слова оживают по слогам";
     private static final int[] KARAOKE_PREVIEW_START = {0, 3, 6, 9, 11, 14, 17, 20};
     private static final int[] KARAOKE_PREVIEW_END = {3, 5, 9, 11, 13, 16, 20, 23};
@@ -47,10 +50,13 @@ public class MainActivity extends Activity {
     private View root;
     private RadioGroup colorGroup;
     private RadioGroup backgroundGroup;
+    private RadioGroup progressColorGroup;
     private RadioGroup karaokeColorGroup;
     private RadioGroup karaokeActiveColorGroup;
     private RadioGroup karaokeHighlightModeGroup;
     private LinearLayout customColorsContainer;
+    private LinearLayout progressControlsContainer;
+    private LinearLayout progressCustomColorContainer;
     private LinearLayout karaokeControlsContainer;
     private LinearLayout karaokeCustomColorContainer;
     private LinearLayout karaokeActiveColorContainer;
@@ -60,6 +66,7 @@ public class MainActivity extends Activity {
     private EditText surfaceInput;
     private EditText foregroundInput;
     private EditText accentInput;
+    private EditText progressColorInput;
     private EditText karaokeColorInput;
     private EditText karaokeActiveColorInput;
     private MaterialSwitch karaokeSeparateActiveColorSwitch;
@@ -73,6 +80,12 @@ public class MainActivity extends Activity {
     private boolean karaokePreviewPlaying = true;
     private boolean karaokePreviewDragging;
     private long karaokePreviewPositionMs;
+    private final Handler widgetRefreshHandler = new Handler(Looper.getMainLooper());
+    private boolean widgetRefreshScheduled;
+    private final Runnable widgetRefreshRunnable = () -> {
+        widgetRefreshScheduled = false;
+        WidgetState.updateAll(MainActivity.this);
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,6 +123,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        widgetRefreshHandler.removeCallbacks(widgetRefreshRunnable);
         if (karaokePreviewAnimator != null) karaokePreviewAnimator.cancel();
         super.onDestroy();
     }
@@ -250,10 +264,21 @@ public class MainActivity extends Activity {
         MaterialSwitch showCover = findViewById(R.id.show_cover_switch);
         MaterialSwitch showProgress = findViewById(R.id.show_progress_switch);
         MaterialSwitch animateLines = findViewById(R.id.animate_lines_switch);
+        progressControlsContainer = findViewById(R.id.progress_controls_container);
+        progressCustomColorContainer = findViewById(R.id.progress_custom_color_container);
+        progressColorGroup = findViewById(R.id.progress_color_group);
+        progressColorInput = findViewById(R.id.progress_color_input);
 
         showCover.setChecked(WidgetSettings.showCover(this));
         showProgress.setChecked(WidgetSettings.showProgress(this));
         animateLines.setChecked(WidgetSettings.animateLines(this));
+        progressColorInput.setText(hex(WidgetSettings.customProgressColor(this)));
+        int progressColorMode = WidgetSettings.progressColorMode(this);
+        progressColorGroup.check(progressColorMode == WidgetSettings.PROGRESS_COLOR_CUSTOM
+                ? R.id.progress_color_custom
+                : progressColorMode == WidgetSettings.PROGRESS_COLOR_TRACK
+                ? R.id.progress_color_track : R.id.progress_color_accent);
+        updateProgressControls(showProgress.isChecked(), progressColorMode);
 
         showCover.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setShowCover(this, checked);
@@ -261,12 +286,60 @@ public class MainActivity extends Activity {
         });
         showProgress.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setShowProgress(this, checked);
+            updateProgressControls(checked, WidgetSettings.progressColorMode(this));
             refreshWidgets();
         });
+        progressColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int mode = checkedId == R.id.progress_color_custom
+                    ? WidgetSettings.PROGRESS_COLOR_CUSTOM
+                    : checkedId == R.id.progress_color_track
+                    ? WidgetSettings.PROGRESS_COLOR_TRACK
+                    : WidgetSettings.PROGRESS_COLOR_ACCENT;
+            WidgetSettings.setProgressColorMode(this, mode);
+            updateProgressControls(showProgress.isChecked(), mode);
+            if (mode == WidgetSettings.PROGRESS_COLOR_TRACK) requestTrackAccentRefresh();
+            refreshWidgets();
+        });
+        findViewById(R.id.save_progress_color).setOnClickListener(
+                view -> saveProgressColor());
+        bindSlider(
+                findViewById(R.id.progress_track_opacity_slider),
+                findViewById(R.id.progress_track_opacity_value),
+                WidgetSettings.progressTrackOpacity(this),
+                "%",
+                value -> WidgetSettings.setProgressTrackOpacity(this, value));
+        bindSlider(
+                findViewById(R.id.progress_height_slider),
+                findViewById(R.id.progress_height_value),
+                WidgetSettings.progressHeightDp(this),
+                " dp",
+                value -> WidgetSettings.setProgressHeightDp(this, value));
         animateLines.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setAnimateLines(this, checked);
             refreshWidgets();
         });
+    }
+
+    private void updateProgressControls(boolean enabled, int colorMode) {
+        progressControlsContainer.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        progressCustomColorContainer.setVisibility(enabled
+                && colorMode == WidgetSettings.PROGRESS_COLOR_CUSTOM
+                ? View.VISIBLE : View.GONE);
+    }
+
+    private void saveProgressColor() {
+        try {
+            int color = parseColor(progressColorInput.getText().toString());
+            WidgetSettings.setCustomProgressColor(this, color);
+            WidgetSettings.setProgressColorMode(this, WidgetSettings.PROGRESS_COLOR_CUSTOM);
+            progressColorGroup.check(R.id.progress_color_custom);
+            updateProgressControls(WidgetSettings.showProgress(this),
+                    WidgetSettings.PROGRESS_COLOR_CUSTOM);
+            refreshWidgets();
+            showMessage("Цвет прогресс-бара применён");
+        } catch (IllegalArgumentException error) {
+            showMessage("Укажи цвет в формате #RRGGBB");
+        }
     }
 
     private void bindKaraokeSettings() {
@@ -451,6 +524,7 @@ public class MainActivity extends Activity {
             if (fromUser) {
                 WidgetSettings.setLyricsTimingOffsetMs(this, rounded);
                 updateKaraokePreview();
+                scheduleWidgetRefresh();
             }
         });
         slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
@@ -620,6 +694,7 @@ public class MainActivity extends Activity {
             if (fromUser) {
                 saver.save(rounded);
                 updateKaraokePreview();
+                scheduleWidgetRefresh();
             }
         });
         slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
@@ -755,7 +830,15 @@ public class MainActivity extends Activity {
         startActivity(intent);
     }
 
+    private void scheduleWidgetRefresh() {
+        if (widgetRefreshScheduled) return;
+        widgetRefreshScheduled = true;
+        widgetRefreshHandler.postDelayed(widgetRefreshRunnable, WIDGET_REFRESH_INTERVAL_MS);
+    }
+
     private void refreshWidgets() {
+        widgetRefreshHandler.removeCallbacks(widgetRefreshRunnable);
+        widgetRefreshScheduled = false;
         WidgetState.updateAll(this);
     }
 

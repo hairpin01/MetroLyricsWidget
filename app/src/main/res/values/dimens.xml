@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="widget_cover_size">52dp</dimen>
-    <dimen name="widget_cover_size_compact">40dp</dimen>
+        <dimen name="widget_cover_size_compact">40dp</dimen>
+    <dimen name="widget_progress_height_2">2dp</dimen>
+    <dimen name="widget_progress_height_3">3dp</dimen>
+    <dimen name="widget_progress_height_4">4dp</dimen>
+    <dimen name="widget_progress_height_5">5dp</dimen>
+    <dimen name="widget_progress_height_6">6dp</dimen>
+    <dimen name="widget_progress_height_7">7dp</dimen>
+    <dimen name="widget_progress_height_8">8dp</dimen>
 </resources>

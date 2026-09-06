@@ -15,6 +15,11 @@ final class WidgetSettings {
     static final int BACKGROUND_COLOR = 0;
     static final int BACKGROUND_ARTWORK = 1;
     static final int BACKGROUND_IMAGE = 2;
+    static final int PROGRESS_COLOR_ACCENT = 0;
+    static final int PROGRESS_COLOR_CUSTOM = 1;
+    static final int PROGRESS_COLOR_TRACK = 2;
+    static final int PROGRESS_HEIGHT_MIN_DP = 2;
+    static final int PROGRESS_HEIGHT_MAX_DP = 8;
     static final int KARAOKE_COLOR_ACCENT = 0;
     // Keep 1 for custom so preferences written by previous builds remain valid.
     static final int KARAOKE_COLOR_CUSTOM = 1;
@@ -36,6 +41,10 @@ final class WidgetSettings {
     private static final String KEY_IMAGE_URI = "custom_image_uri";
     private static final String KEY_SHOW_COVER = "show_cover";
     private static final String KEY_SHOW_PROGRESS = "show_progress";
+    private static final String KEY_PROGRESS_COLOR_MODE = "progress_color_mode";
+    private static final String KEY_PROGRESS_CUSTOM_COLOR = "progress_custom_color";
+    private static final String KEY_PROGRESS_TRACK_OPACITY = "progress_track_opacity";
+    private static final String KEY_PROGRESS_HEIGHT_DP = "progress_height_dp";
     private static final String KEY_ANIMATE_LINES = "animate_lines";
     private static final String KEY_KARAOKE_ENABLED = "karaoke_enabled";
     // Kept to migrate settings from builds where the trail was a switch.
@@ -141,6 +150,49 @@ final class WidgetSettings {
 
     static void setShowProgress(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_SHOW_PROGRESS, value).apply();
+    }
+
+    static int progressColorMode(Context context) {
+        return clamp(prefs(context).getInt(KEY_PROGRESS_COLOR_MODE, PROGRESS_COLOR_ACCENT),
+                PROGRESS_COLOR_ACCENT, PROGRESS_COLOR_TRACK);
+    }
+
+    static void setProgressColorMode(Context context, int value) {
+        prefs(context).edit().putInt(KEY_PROGRESS_COLOR_MODE,
+                clamp(value, PROGRESS_COLOR_ACCENT, PROGRESS_COLOR_TRACK)).apply();
+    }
+
+    static int customProgressColor(Context context) {
+        return prefs(context).getInt(KEY_PROGRESS_CUSTOM_COLOR, Color.rgb(208, 188, 255));
+    }
+
+    static void setCustomProgressColor(Context context, int color) {
+        prefs(context).edit().putInt(KEY_PROGRESS_CUSTOM_COLOR, opaque(color)).apply();
+    }
+
+    static int progressColor(Context context, int paletteAccent, int trackAccent) {
+        int mode = progressColorMode(context);
+        if (mode == PROGRESS_COLOR_CUSTOM) return customProgressColor(context);
+        if (mode == PROGRESS_COLOR_TRACK) return trackAccent;
+        return paletteAccent;
+    }
+
+    static int progressTrackOpacity(Context context) {
+        return clamp(prefs(context).getInt(KEY_PROGRESS_TRACK_OPACITY, 30), 0, 100);
+    }
+
+    static void setProgressTrackOpacity(Context context, int value) {
+        prefs(context).edit().putInt(KEY_PROGRESS_TRACK_OPACITY, clamp(value, 0, 100)).apply();
+    }
+
+    static int progressHeightDp(Context context) {
+        return clamp(prefs(context).getInt(KEY_PROGRESS_HEIGHT_DP, 4),
+                PROGRESS_HEIGHT_MIN_DP, PROGRESS_HEIGHT_MAX_DP);
+    }
+
+    static void setProgressHeightDp(Context context, int value) {
+        prefs(context).edit().putInt(KEY_PROGRESS_HEIGHT_DP,
+                clamp(value, PROGRESS_HEIGHT_MIN_DP, PROGRESS_HEIGHT_MAX_DP)).apply();
     }
 
     static boolean animateLines(Context context) {
@@ -267,6 +319,7 @@ final class WidgetSettings {
     }
     static boolean usesTrackAccent(Context context) {
         return colorSource(context) == COLOR_TRACK
+                || (showProgress(context) && progressColorMode(context) == PROGRESS_COLOR_TRACK)
                 || karaokeColorMode(context) == KARAOKE_COLOR_TRACK
                 || (karaokeSeparateActiveColor(context)
                 && karaokeActiveColorMode(context) == KARAOKE_COLOR_TRACK);

@@ -163,6 +163,8 @@ final class WidgetState {
                 context, palette.accent, trackAccent);
         int configuredActiveColor = WidgetSettings.karaokeActiveColor(
                 context, configuredKaraokeColor, palette.accent, trackAccent);
+        int configuredProgressColor = WidgetSettings.progressColor(
+                context, palette.accent, trackAccent);
         int karaokeColor = imageBackground
                 ? readableOnDark(configuredKaraokeColor) : configuredKaraokeColor;
         int activeKaraokeColor = imageBackground
@@ -252,6 +254,16 @@ final class WidgetState {
             // ClipDrawable levels span 0..10000, same scale as ProgressBar.
             int level = (int) (10000L * clamped / duration);
             views.setInt(R.id.widget_progress, "setImageLevel", level);
+            int height = progressHeightDimen(WidgetSettings.progressHeightDp(context));
+            views.setViewLayoutHeightDimen(R.id.widget_progress, height);
+            views.setViewLayoutHeightDimen(R.id.widget_progress_track, height);
+            int fillColor = imageBackground
+                    ? readableOnDark(configuredProgressColor) : configuredProgressColor;
+            views.setInt(R.id.widget_progress, "setColorFilter", fillColor);
+            views.setInt(R.id.widget_progress_track, "setColorFilter",
+                    imageBackground ? Color.WHITE : palette.foreground);
+            views.setInt(R.id.widget_progress_track, "setImageAlpha",
+                    Math.round(255f * WidgetSettings.progressTrackOpacity(context) / 100f));
         }
 
         int imageAlpha = Math.round(255f * opacity / 100f);
@@ -267,11 +279,6 @@ final class WidgetState {
             views.setTextColor(R.id.widget_title, readableAccent);
             views.setTextColor(R.id.widget_status, Color.argb(210, 255, 255, 255));
             // Lyric colors were queued before the ViewFlipper switch above.
-            if (showProgress) {
-                views.setInt(R.id.widget_progress, "setColorFilter", readableOnDark(palette.accent));
-                views.setInt(R.id.widget_progress_track, "setColorFilter", Color.WHITE);
-                views.setInt(R.id.widget_progress_track, "setImageAlpha", 80);
-            }
         } else {
             views.setImageViewResource(R.id.widget_bg, R.drawable.widget_panel);
             views.setInt(R.id.widget_bg, "setColorFilter", palette.surface);
@@ -282,11 +289,6 @@ final class WidgetState {
             views.setTextColor(R.id.widget_title, palette.accent);
             views.setTextColor(R.id.widget_status, palette.secondary);
             // Lyric colors were queued before the ViewFlipper switch above.
-            if (showProgress) {
-                views.setInt(R.id.widget_progress, "setColorFilter", palette.accent);
-                views.setInt(R.id.widget_progress_track, "setColorFilter", palette.foreground);
-                views.setInt(R.id.widget_progress_track, "setImageAlpha", 77);
-            }
         }
 
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(Constants.TARGET_PACKAGE);
@@ -412,6 +414,18 @@ final class WidgetState {
         String detail = provider.length() == 0 ? status : provider;
         if (detail.length() == 0 || activity.equalsIgnoreCase(detail)) return activity;
         return activity + " · " + detail;
+    }
+
+    private static int progressHeightDimen(int heightDp) {
+        switch (heightDp) {
+            case 2: return R.dimen.widget_progress_height_2;
+            case 3: return R.dimen.widget_progress_height_3;
+            case 5: return R.dimen.widget_progress_height_5;
+            case 6: return R.dimen.widget_progress_height_6;
+            case 7: return R.dimen.widget_progress_height_7;
+            case 8: return R.dimen.widget_progress_height_8;
+            default: return R.dimen.widget_progress_height_4;
+        }
     }
 
     private static int readableOnDark(int color) {

@@ -7,7 +7,7 @@ The widget displays the current lyrics directly in the system interface, providi
 ## Features
 - Previous, current, and next synchronized lyric lines in a resizable home-screen widget.
 - Automatic word/syllable karaoke highlighting for LyricsPlus enhanced lyrics, with a plain-line fallback for regular LRC.
-- Material You colors, artwork or custom-image backgrounds, album cover, progress bar, and optional line animations.
+- Material You colors, artwork or custom-image backgrounds, album cover, optional line animations, and a progress bar with selectable palette/artwork/custom color, thickness, and track opacity.
 
 ## Preview
 
