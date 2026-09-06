@@ -4,6 +4,11 @@ An LSPosed module for [Metrolist](https://github.com/metrolistgroup/metrolist) t
 
 The widget displays the current lyrics directly in the system interface, providing a smooth and unobtrusive way to follow along with the song.
 
+## Features
+- Previous, current, and next synchronized lyric lines in a resizable home-screen widget.
+- Automatic word/syllable karaoke highlighting for LyricsPlus enhanced lyrics, with a plain-line fallback for regular LRC.
+- Material You colors, artwork or custom-image backgrounds, album cover, progress bar, and optional line animations.
+
 ## Preview
 
 ![preview_4x2](assets/preview-4x2.gif)

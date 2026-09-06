@@ -9,6 +9,11 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.graphics.Typeface;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -40,6 +45,13 @@ final class WidgetState {
         if (intent.hasExtra(Constants.EXTRA_DURATION)) {
             editor.putLong(Constants.EXTRA_DURATION, intent.getLongExtra(Constants.EXTRA_DURATION, 0L));
         }
+        // Always reset absent ranges for compatibility with an older embedded hook.
+        editor.putInt(Constants.EXTRA_HIGHLIGHT_END,
+                intent.getIntExtra(Constants.EXTRA_HIGHLIGHT_END, -1));
+        editor.putInt(Constants.EXTRA_ACTIVE_START,
+                intent.getIntExtra(Constants.EXTRA_ACTIVE_START, -1));
+        editor.putInt(Constants.EXTRA_ACTIVE_END,
+                intent.getIntExtra(Constants.EXTRA_ACTIVE_END, -1));
         editor.putLong("updated_at", System.currentTimeMillis());
         editor.apply();
     }
@@ -89,6 +101,9 @@ final class WidgetState {
         boolean playing = state.getBoolean(Constants.EXTRA_PLAYING, false);
         long position = state.getLong(Constants.EXTRA_POSITION, 0L);
         long duration = state.getLong(Constants.EXTRA_DURATION, 0L);
+        int highlightEnd = state.getInt(Constants.EXTRA_HIGHLIGHT_END, -1);
+        int activeStart = state.getInt(Constants.EXTRA_ACTIVE_START, -1);
+        int activeEnd = state.getInt(Constants.EXTRA_ACTIVE_END, -1);
         long updatedAt = state.getLong("updated_at", 0L);
 
         if (title.length() == 0) title = "MetroList Lyrics";
@@ -113,6 +128,10 @@ final class WidgetState {
         Bitmap background = ArtworkLoader.background(context, backgroundMode, trackId, artwork,
                 portraitWidthDp, portraitHeightDp);
         boolean imageBackground = background != null && backgroundMode != WidgetSettings.BACKGROUND_COLOR;
+        int currentLineColor = imageBackground ? Color.WHITE : palette.foreground;
+        int karaokeColor = imageBackground ? readableOnDark(palette.accent) : palette.accent;
+        CharSequence currentDisplay = karaokeText(
+                current, highlightEnd, activeStart, activeEnd, karaokeColor);
         // Adaptive layout: one-row widgets (3x1, 4x1…) have little vertical room, so
         // prev/next lines are dropped and the current line takes all remaining height.
         // Narrow widgets lose the status label (it steals title width) and get a
@@ -138,7 +157,7 @@ final class WidgetState {
                 previous.length() == 0 ? " " : previous, changed, animate);
         setLine(views, lineState, LineState.SLOT_CURRENT,
                 R.id.widget_flipper_current, R.id.widget_current_a, R.id.widget_current_b,
-                current, changed, animate);
+                currentDisplay, changed, animate);
         setLine(views, lineState, LineState.SLOT_NEXT,
                 R.id.widget_flipper_next, R.id.widget_next_a, R.id.widget_next_b,
                 next.length() == 0 ? " " : next, changed, animate);
@@ -206,7 +225,7 @@ final class WidgetState {
             int readableAccent = readableOnDark(palette.accent);
             views.setTextColor(R.id.widget_title, readableAccent);
             views.setTextColor(R.id.widget_status, Color.argb(210, 255, 255, 255));
-            setLineColors(views, Color.argb(158, 255, 255, 255), Color.WHITE);
+            setLineColors(views, Color.argb(158, 255, 255, 255), currentLineColor);
             if (showProgress) {
                 views.setInt(R.id.widget_progress, "setColorFilter", readableOnDark(palette.accent));
                 views.setInt(R.id.widget_progress_track, "setColorFilter", Color.WHITE);
@@ -221,7 +240,7 @@ final class WidgetState {
 
             views.setTextColor(R.id.widget_title, palette.accent);
             views.setTextColor(R.id.widget_status, palette.secondary);
-            setLineColors(views, palette.muted, palette.foreground);
+            setLineColors(views, palette.muted, currentLineColor);
             if (showProgress) {
                 views.setInt(R.id.widget_progress, "setColorFilter", palette.accent);
                 views.setInt(R.id.widget_progress_track, "setColorFilter", palette.foreground);
@@ -262,7 +281,7 @@ final class WidgetState {
     // RemoteViews actions replay in order, so texts must be set before the flip.
     private static void setLine(RemoteViews views, LineState state, int slot,
                                 int flipperId, int slotA, int slotB,
-                                String text, boolean changed, boolean animate) {
+                                CharSequence text, boolean changed, boolean animate) {
         int shown = state.currentChild(slot);
         int visible = shown == 0 ? slotA : slotB;
         int hidden = shown == 0 ? slotB : slotA;
@@ -276,6 +295,26 @@ final class WidgetState {
             views.setTextViewText(visible, text);
             views.setTextViewText(hidden, text);
         }
+    }
+
+    private static CharSequence karaokeText(String text, int highlightEnd,
+                                               int activeStart, int activeEnd,
+                                               int highlightColor) {
+        if (text.length() == 0 || (highlightEnd <= 0 && activeStart < 0)) return text;
+        int length = text.length();
+        int sungEnd = Math.max(0, Math.min(length, highlightEnd));
+        int tokenStart = Math.max(0, Math.min(length, activeStart));
+        int tokenEnd = Math.max(tokenStart, Math.min(length, activeEnd));
+        SpannableString styled = new SpannableString(text);
+        if (sungEnd > 0) {
+            styled.setSpan(new ForegroundColorSpan(highlightColor), 0, sungEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (activeStart >= 0 && tokenEnd > tokenStart) {
+            styled.setSpan(new StyleSpan(Typeface.BOLD), tokenStart, tokenEnd,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        return styled;
     }
 
     private static void setLineColors(RemoteViews views, int sideColor, int currentColor) {

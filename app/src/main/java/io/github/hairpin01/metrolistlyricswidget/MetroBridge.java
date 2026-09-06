@@ -22,18 +22,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 final class MetroBridge implements Runnable {
     private static final Map<Object, MetroBridge> ACTIVE = new WeakHashMap<Object, MetroBridge>();
-    private static final Pattern LRC_TIME = Pattern.compile("\\[(\\d{1,3}):(\\d{2})(?:[\\.:](\\d{1,3}))?\\]");
-    private static final Pattern RICH_TIME = Pattern.compile("<(\\d{1,3}):(\\d{2})\\.(\\d{1,3})>");
-    private static final Pattern RICH_TAG = Pattern.compile("<\\d{1,3}:\\d{2}\\.\\d{1,3}>");
-    private static final Pattern AGENT_TAG = Pattern.compile("\\{(?:agent:[^}]+|bg)\\}");
 
     static void attach(Object service, ClassLoader classLoader) {
         if (!(service instanceof Context)) return;
@@ -137,7 +131,7 @@ final class MetroBridge implements Runnable {
             }
 
             if (trackId.equals(lyricsTrackId) && !lyricLines.isEmpty()) {
-                emitCurrentLine(position, duration, playing, false);
+                nextDelay = Math.min(nextDelay, emitCurrentLine(position, duration, playing, false));
             } else {
                 emitHeartbeat(position, duration, playing);
             }
@@ -345,8 +339,10 @@ final class MetroBridge implements Runnable {
 
     private boolean acceptLyrics(String trackId, String rawLyrics, String provider, int offsetMs) {
         if (!trackId.equals(currentTrackId) || !validLyrics(rawLyrics)) return false;
-        List<LyricLine> parsed = parseUsingMetroList(rawLyrics);
-        if (parsed.isEmpty()) parsed = parseFallback(rawLyrics);
+        List<LyricLine> fallback = parseFallback(rawLyrics);
+        List<LyricLine> parsed = hasKaraokeTimings(fallback)
+                ? fallback : parseUsingMetroList(rawLyrics);
+        if (parsed.isEmpty()) parsed = fallback;
         if (parsed.isEmpty()) {
             lyricsTrackId = trackId;
             lyricProvider = provider == null ? "" : provider;
@@ -383,7 +379,7 @@ final class MetroBridge implements Runnable {
             if (parsed instanceof Iterable) {
                 for (Object entry : (Iterable<?>) parsed) {
                     long time = number(read(entry, "time", "getTime"), -1L);
-                    String text = normalizeText(string(read(entry, "text", "getText")));
+                    String text = LyricsParser.normalizeText(string(read(entry, "text", "getText")));
                     boolean background = bool(read(entry, "isBackground", "isBackground", "getBackground"), false);
                     if (time >= 0L && text.length() != 0) result.add(new LyricLine(time, text, background));
                 }
@@ -396,38 +392,14 @@ final class MetroBridge implements Runnable {
     }
 
     private List<LyricLine> parseFallback(String rawLyrics) {
-        List<LyricLine> result = new ArrayList<LyricLine>();
-        String raw = rawLyrics.trim();
-        if (raw.startsWith("\"") && raw.endsWith("\"") && raw.length() > 1) {
-            raw = raw.substring(1, raw.length() - 1);
+        return LyricsParser.parse(rawLyrics);
+    }
+
+    private static boolean hasKaraokeTimings(List<LyricLine> lines) {
+        for (LyricLine line : lines) {
+            if (!line.tokens.isEmpty()) return true;
         }
-        raw = raw.replace("\\r", "").replace("\\n", "\n").replace("\\t", " ");
-        String[] rows = raw.split("\\r?\\n");
-        for (String row : rows) {
-            Matcher matcher = LRC_TIME.matcher(row);
-            List<Long> times = new ArrayList<Long>();
-            int contentStart = 0;
-            while (matcher.find()) {
-                times.add(parseTime(matcher.group(1), matcher.group(2), matcher.group(3)));
-                contentStart = matcher.end();
-            }
-            boolean background = row.trim().startsWith("[bg:") || row.contains("{bg}");
-            if (times.isEmpty() && background) {
-                Matcher rich = RICH_TIME.matcher(row);
-                if (rich.find()) {
-                    times.add(parseTime(rich.group(1), rich.group(2), rich.group(3)));
-                    contentStart = rich.start();
-                }
-            }
-            if (times.isEmpty()) continue;
-            String text = contentStart < row.length() ? row.substring(contentStart) : "";
-            text = normalizeText(text);
-            for (Long time : times) {
-                if (text.length() != 0) result.add(new LyricLine(time.longValue(), text, background));
-            }
-        }
-        Collections.sort(result);
-        return result;
+        return false;
     }
 
     private List<LyricLine> mergeSameTime(List<LyricLine> input) {
@@ -440,10 +412,19 @@ final class MetroBridge implements Runnable {
             if (!merged.isEmpty()) {
                 LyricLine last = merged.get(merged.size() - 1);
                 if (last.timeMs == line.timeMs) {
-                    if (!last.text.equals(line.text)) {
+                    if (last.text.equals(line.text)) {
+                        if (last.tokens.isEmpty() && !line.tokens.isEmpty()) {
+                            merged.set(merged.size() - 1,
+                                    new LyricLine(last.timeMs, last.text,
+                                            last.background && line.background, line.tokens));
+                        }
+                    } else {
+                        // Keep timings from the leading/main line. Timings belonging to
+                        // an appended simultaneous line may overlap and need shifted
+                        // ranges, so that appended part intentionally stays plain.
                         merged.set(merged.size() - 1,
                                 new LyricLine(last.timeMs, last.text + "  ·  " + line.text,
-                                        last.background && line.background));
+                                        last.background && line.background, last.tokens));
                     }
                     continue;
                 }
@@ -453,9 +434,9 @@ final class MetroBridge implements Runnable {
         return merged;
     }
 
-    private void emitCurrentLine(long positionMs, long durationMs, boolean playing, boolean force) {
+    private long emitCurrentLine(long positionMs, long durationMs, boolean playing, boolean force) {
         List<LyricLine> lines = lyricLines;
-        if (lines.isEmpty()) return;
+        if (lines.isEmpty()) return playing ? 220L : 700L;
         long effectivePosition = positionMs + lyricsOffsetMs + 100L;
         int low = 0;
         int high = lines.size() - 1;
@@ -469,13 +450,26 @@ final class MetroBridge implements Runnable {
                 high = middle - 1;
             }
         }
-
         String previous = index > 0 ? lines.get(index - 1).text : "";
-        String current = index >= 0 ? lines.get(index).text : "♪";
+        LyricLine currentLine = index >= 0 ? lines.get(index) : null;
+        String current = currentLine == null ? "♪" : currentLine.text;
         String next = index + 1 < lines.size() ? lines.get(index + 1).text : "";
         String status = playing ? "играет" : "пауза";
         if (lyricProvider.length() != 0) status += " · " + lyricProvider;
-        sendSnapshot(previous, current, next, status, lyricProvider, playing, positionMs, durationMs, force);
+
+        KaraokeFrame frame = KaraokeFrame.at(currentLine, effectivePosition);
+        sendSnapshot(previous, current, next, status, lyricProvider, playing,
+                positionMs, durationMs, frame.highlightEnd, frame.activeStart, frame.activeEnd, force);
+
+        if (!playing) return 700L;
+        long nextBoundary = frame.nextBoundaryMs;
+        if (index + 1 < lines.size()) {
+            long nextLineTime = lines.get(index + 1).timeMs;
+            if (nextLineTime > effectivePosition) nextBoundary = Math.min(nextBoundary, nextLineTime);
+        }
+        if (nextBoundary == Long.MAX_VALUE) return 220L;
+        long untilBoundary = nextBoundary - effectivePosition;
+        return Math.max(35L, Math.min(220L, untilBoundary));
     }
 
     // Periodic snapshot for tracks without synced lyrics: keeps the progress bar
@@ -502,11 +496,30 @@ final class MetroBridge implements Runnable {
             long duration,
             boolean force
     ) {
+        sendSnapshot(previous, current, next, status, provider, playing, position, duration,
+                -1, -1, -1, force);
+    }
+
+    private void sendSnapshot(
+            String previous,
+            String current,
+            String next,
+            String status,
+            String provider,
+            boolean playing,
+            long position,
+            long duration,
+            int highlightEnd,
+            int activeStart,
+            int activeEnd,
+            boolean force
+    ) {
         // Position must not be fully deduplicated: the widget progress bar is driven
         // by these snapshots, so the payload carries a one-second quantized position
         // to broadcast roughly once per second while everything else stays unchanged.
         String payload = currentTrackId + '\u0001' + currentTitle + '\u0001' + currentArtist + '\u0001' + currentArtwork + '\u0001' +
                 previous + '\u0001' + current + '\u0001' + next + '\u0001' + status + '\u0001' + provider + '\u0001' + playing +
+                '\u0001' + highlightEnd + '\u0001' + activeStart + '\u0001' + activeEnd +
                 '\u0001' + (position / 1000L);
         if (!force && payload.equals(lastPayload)) return;
         lastPayload = payload;
@@ -532,6 +545,9 @@ final class MetroBridge implements Runnable {
             intent.putExtra(Constants.EXTRA_PLAYING, playing);
             intent.putExtra(Constants.EXTRA_POSITION, position);
             intent.putExtra(Constants.EXTRA_DURATION, duration);
+            intent.putExtra(Constants.EXTRA_HIGHLIGHT_END, highlightEnd);
+            intent.putExtra(Constants.EXTRA_ACTIVE_START, activeStart);
+            intent.putExtra(Constants.EXTRA_ACTIVE_END, activeEnd);
             context.sendBroadcast(intent);
         } catch (Throwable error) {
             log("widget broadcast failed: " + error);
@@ -649,35 +665,45 @@ final class MetroBridge implements Runnable {
         return value != null && value.trim().length() != 0 && !"LYRICS_NOT_FOUND".equals(value.trim());
     }
 
-    private static long parseTime(String minute, String second, String fraction) {
-        long min = parseLong(minute);
-        long sec = parseLong(second);
-        long part = parseLong(fraction);
-        if (fraction == null) part = 0L;
-        else if (fraction.length() == 1) part *= 100L;
-        else if (fraction.length() == 2) part *= 10L;
-        else if (fraction.length() > 3) part /= (long) Math.pow(10, fraction.length() - 3);
-        return min * 60_000L + sec * 1_000L + part;
-    }
-
-    private static long parseLong(String value) {
-        try { return value == null ? 0L : Long.parseLong(value); }
-        catch (Throwable ignored) { return 0L; }
-    }
-
-    private static String normalizeText(String value) {
-        if (value == null) return "";
-        String text = RICH_TAG.matcher(value).replaceAll("");
-        text = AGENT_TAG.matcher(text).replaceAll("");
-        text = text.replaceFirst("^\\s*(?:v\\d+|bg)\\s*:\\s*", "");
-        text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">");
-        text = text.replace("&" + "quot;", "\"").replace("&#" + "39;", "'").replace("&" + "nbsp;", " ");
-        text = text.replaceAll("\\s+", " ").trim();
-        return text;
-    }
-
     private static void log(String message) {
         XposedBridge.log("[MetroLyrics] " + message);
+    }
+
+    private static final class KaraokeFrame {
+        final int highlightEnd;
+        final int activeStart;
+        final int activeEnd;
+        final long nextBoundaryMs;
+
+        KaraokeFrame(int highlightEnd, int activeStart, int activeEnd, long nextBoundaryMs) {
+            this.highlightEnd = highlightEnd;
+            this.activeStart = activeStart;
+            this.activeEnd = activeEnd;
+            this.nextBoundaryMs = nextBoundaryMs;
+        }
+
+        static KaraokeFrame at(LyricLine line, long positionMs) {
+            if (line == null || line.tokens.isEmpty()) {
+                return new KaraokeFrame(-1, -1, -1, Long.MAX_VALUE);
+            }
+            int highlightEnd = -1;
+            int activeStart = -1;
+            int activeEnd = -1;
+            long nextBoundary = Long.MAX_VALUE;
+            for (LyricToken token : line.tokens) {
+                if (token.startMs <= positionMs) {
+                    if (token.hasTextRange()) highlightEnd = Math.max(highlightEnd, token.endChar);
+                    if (positionMs < token.endMs && token.hasTextRange()) {
+                        activeStart = token.startChar;
+                        activeEnd = token.endChar;
+                    }
+                } else {
+                    nextBoundary = Math.min(nextBoundary, token.startMs);
+                }
+                if (token.endMs > positionMs) nextBoundary = Math.min(nextBoundary, token.endMs);
+            }
+            return new KaraokeFrame(highlightEnd, activeStart, activeEnd, nextBoundary);
+        }
     }
 
     private static final class TrackInfo {
