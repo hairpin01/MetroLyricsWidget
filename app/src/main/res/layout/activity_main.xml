@@ -28,8 +28,6 @@
         android:elevation="0dp"
         android:paddingStart="52dp"
         android:paddingEnd="52dp"
-        app:itemActiveIndicatorColor="?attr/colorSecondaryContainer"
-        app:itemActiveIndicatorEnabled="true"
         app:itemIconSize="26dp"
         app:itemIconTint="@color/main_navigation_icon"
         app:itemRippleColor="?attr/colorSecondaryContainer"
