@@ -21,4 +21,5 @@ public final class Constants {
     public static final String EXTRA_ARTWORK = "artwork";
     public static final String EXTRA_PLAYING = "playing";
     public static final String EXTRA_POSITION = "position";
+    public static final String EXTRA_DURATION = "duration";
 }
