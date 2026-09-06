@@ -103,19 +103,20 @@ final class WidgetState {
         int backgroundMode = WidgetSettings.backgroundMode(context);
         int opacity = WidgetSettings.opacity(context);
         int dimming = WidgetSettings.dimming(context);
-        Bitmap background = ArtworkLoader.background(context, backgroundMode, trackId, artwork);
+        // AppWidget option dimensions are already expressed in dp. In portrait the
+        // host reports the active shape through MIN_WIDTH and MAX_HEIGHT.
+        Bundle options = manager.getAppWidgetOptions(widgetId);
+        int portraitWidthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+        int portraitHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        // Render the artwork to the widget's own aspect ratio instead of preserving
+        // one fixed 16:9 crop after the launcher resizes it.
+        Bitmap background = ArtworkLoader.background(context, backgroundMode, trackId, artwork,
+                portraitWidthDp, portraitHeightDp);
         boolean imageBackground = background != null && backgroundMode != WidgetSettings.BACKGROUND_COLOR;
-
         // Adaptive layout: one-row widgets (3x1, 4x1…) have little vertical room, so
         // prev/next lines are dropped and the current line takes all remaining height.
         // Narrow widgets lose the status label (it steals title width) and get a
         // smaller cover so the current line keeps as much room as possible.
-        // Per AppWidgetManager docs: MIN_WIDTH is the portrait width and MAX_HEIGHT
-        // is the portrait height, which is the orientation the widget lives in.
-        float density = context.getResources().getDisplayMetrics().density;
-        Bundle options = manager.getAppWidgetOptions(widgetId);
-        int portraitWidthDp = Math.round(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) / density);
-        int portraitHeightDp = Math.round(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0) / density);
         // One launcher row is roughly 100-160dp, two rows start around 240dp;
         // a 3x1 cell is about 200-230dp wide, 4x1 around 280dp and wider.
         boolean compact = portraitHeightDp > 0 && portraitHeightDp < 180;
