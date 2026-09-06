@@ -16,9 +16,12 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.RemoteViews;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 final class WidgetState {
@@ -33,8 +36,10 @@ final class WidgetState {
         copyString(intent, editor, Constants.EXTRA_ARTIST);
         copyString(intent, editor, Constants.EXTRA_ARTWORK);
         copyString(intent, editor, Constants.EXTRA_PREVIOUS);
+        copyContextString(intent, editor, Constants.EXTRA_PREVIOUS_CONTEXT, Constants.EXTRA_PREVIOUS);
         copyString(intent, editor, Constants.EXTRA_CURRENT);
         copyString(intent, editor, Constants.EXTRA_NEXT);
+        copyContextString(intent, editor, Constants.EXTRA_NEXT_CONTEXT, Constants.EXTRA_NEXT);
         copyString(intent, editor, Constants.EXTRA_STATUS);
         copyString(intent, editor, Constants.EXTRA_PROVIDER);
         if (intent.hasExtra(Constants.EXTRA_PLAYING)) {
@@ -61,6 +66,15 @@ final class WidgetState {
 
     private static void copyString(Intent intent, SharedPreferences.Editor editor, String key) {
         if (intent.hasExtra(key)) editor.putString(key, intent.getStringExtra(key));
+    }
+
+    private static void copyContextString(Intent intent, SharedPreferences.Editor editor,
+                                          String contextKey, String fallbackKey) {
+        if (intent.hasExtra(contextKey)) {
+            editor.putString(contextKey, intent.getStringExtra(contextKey));
+        } else if (intent.hasExtra(fallbackKey)) {
+            editor.putString(contextKey, intent.getStringExtra(fallbackKey));
+        }
     }
 
     static void clear(Context context) {
@@ -119,8 +133,11 @@ final class WidgetState {
         String artist = clean(state.getString(Constants.EXTRA_ARTIST, ""));
         String artwork = clean(state.getString(Constants.EXTRA_ARTWORK, ""));
         String previous = clean(state.getString(Constants.EXTRA_PREVIOUS, ""));
+        String previousContext = clean(state.getString(
+                Constants.EXTRA_PREVIOUS_CONTEXT, previous));
         String current = clean(state.getString(Constants.EXTRA_CURRENT, ""));
         String next = clean(state.getString(Constants.EXTRA_NEXT, ""));
+        String nextContext = clean(state.getString(Constants.EXTRA_NEXT_CONTEXT, next));
         String status = clean(state.getString(Constants.EXTRA_STATUS, ""));
         String provider = clean(state.getString(Constants.EXTRA_PROVIDER, ""));
         boolean playing = state.getBoolean(Constants.EXTRA_PLAYING, false);
@@ -172,19 +189,36 @@ final class WidgetState {
         CharSequence currentDisplay = karaokeText(context, current, karaoke,
                 highlightEnd, activeStart, activeEnd, currentLineColor, karaokeColor,
                 activeKaraokeColor);
-        // Adaptive layout: one-row widgets (3x1, 4x1…) have little vertical room, so
-        // prev/next lines are dropped and the current line takes all remaining height.
-        // Narrow widgets lose the status label (it steals title width) and get a
-        // smaller cover so the current line keeps as much room as possible.
-        // One launcher row is roughly 100-160dp, two rows start around 240dp;
-        // a 3x1 cell is about 200-230dp wide, 4x1 around 280dp and wider.
-        boolean compact = portraitHeightDp > 0 && portraitHeightDp < 180;
+        int automaticPadding = automaticVerticalPaddingDp(portraitHeightDp);
+        boolean autoPadding = WidgetSettings.autoVerticalPadding(context);
+        int topPadding = autoPadding ? automaticPadding : WidgetSettings.topPaddingDp(context);
+        int bottomPadding = autoPadding ? automaticPadding : WidgetSettings.bottomPaddingDp(context);
+        // The capacity formula is calibrated around the default 8dp + 8dp padding.
+        // Manual larger offsets therefore reduce the number of surrounding lines too.
+        int lyricsHeightDp = portraitHeightDp <= 0 ? portraitHeightDp : Math.max(0,
+                portraitHeightDp - topPadding - bottomPadding + 16);
+        // The current line stays centered in the free middle area. Each increase in
+        // widget height reveals more context above and below it (up to six per side).
+        int currentSize = WidgetSettings.textSize(context);
+        int sideSize = Math.max(11, currentSize - 6);
+        int contextLinesPerSide = contextLinesPerSide(lyricsHeightDp, currentSize);
+        ContextWindow contextWindow = ContextWindow.create(
+                previousContext, nextContext, previous, next, contextLinesPerSide);
+        previous = contextWindow.previous;
+        next = contextWindow.next;
+        boolean compact = contextLinesPerSide == 0;
+        // Narrow widgets lose the status label because it steals title width.
         boolean narrow = portraitWidthDp > 0 && portraitWidthDp < 260;
 
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_lyrics);
-        // Apply both flipper children's colors before setDisplayedChild. Otherwise the
-        // launcher can render the XML default (white) for the first animation frame.
+        views.setViewPadding(R.id.widget_content, dpToPx(context, 14),
+                dpToPx(context, topPadding), dpToPx(context, 14),
+                dpToPx(context, bottomPadding));
+
+        // Apply both flipper children's colors and gravity before setDisplayedChild.
+        // Otherwise the launcher can render the XML defaults for the first frame.
         setLineColors(views, sideLineColor, currentLineColor);
+        setLyricGravity(views, lyricGravity(WidgetSettings.textAlignment(context)));
         views.setTextViewText(R.id.widget_title, title);
         views.setTextViewText(R.id.widget_status, status);
         views.setViewVisibility(R.id.widget_status, narrow ? View.GONE : View.VISIBLE);
@@ -206,15 +240,17 @@ final class WidgetState {
                 next.length() == 0 ? " " : next, changed, animate);
         lineState.apply(previous, current, next);
         lineState.save(context, widgetId);
-        // Prev/next lines need roughly 3+ lyric rows of height; in the compact
-        // (Nx1) layout only the current line and progress are worth the space.
         views.setViewVisibility(R.id.widget_flipper_previous,
-                !compact && previous.length() != 0 ? View.VISIBLE : View.GONE);
+                previous.length() != 0 ? View.VISIBLE : View.GONE);
         views.setViewVisibility(R.id.widget_flipper_next,
-                !compact && next.length() != 0 ? View.VISIBLE : View.GONE);
+                next.length() != 0 ? View.VISIBLE : View.GONE);
+        int previousMaxLines = Math.max(1, contextWindow.previousLines);
+        int nextMaxLines = Math.max(1, contextWindow.nextLines);
+        views.setInt(R.id.widget_previous_a, "setMaxLines", previousMaxLines);
+        views.setInt(R.id.widget_previous_b, "setMaxLines", previousMaxLines);
+        views.setInt(R.id.widget_next_a, "setMaxLines", nextMaxLines);
+        views.setInt(R.id.widget_next_b, "setMaxLines", nextMaxLines);
 
-        int currentSize = WidgetSettings.textSize(context);
-        int sideSize = Math.max(11, currentSize - 6);
         views.setTextViewTextSize(R.id.widget_current_a, TypedValue.COMPLEX_UNIT_SP, currentSize);
         views.setTextViewTextSize(R.id.widget_current_b, TypedValue.COMPLEX_UNIT_SP, currentSize);
         views.setTextViewTextSize(R.id.widget_previous_a, TypedValue.COMPLEX_UNIT_SP, sideSize);
@@ -402,6 +438,21 @@ final class WidgetState {
         views.setTextColor(R.id.widget_next_b, sideColor);
     }
 
+    private static int lyricGravity(int alignment) {
+        if (alignment == WidgetSettings.TEXT_ALIGN_CENTER) return Gravity.CENTER_HORIZONTAL;
+        if (alignment == WidgetSettings.TEXT_ALIGN_END) return Gravity.END;
+        return Gravity.START;
+    }
+
+    private static void setLyricGravity(RemoteViews views, int gravity) {
+        views.setInt(R.id.widget_previous_a, "setGravity", gravity);
+        views.setInt(R.id.widget_previous_b, "setGravity", gravity);
+        views.setInt(R.id.widget_current_a, "setGravity", gravity);
+        views.setInt(R.id.widget_current_b, "setGravity", gravity);
+        views.setInt(R.id.widget_next_a, "setGravity", gravity);
+        views.setInt(R.id.widget_next_b, "setGravity", gravity);
+    }
+
     private static String displayStatus(String trackId, String status, String provider,
                                         boolean playing, long updatedAt) {
         if (updatedAt == 0L) return provider.length() == 0 ? "ожидание" : provider;
@@ -414,6 +465,24 @@ final class WidgetState {
         String detail = provider.length() == 0 ? status : provider;
         if (detail.length() == 0 || activity.equalsIgnoreCase(detail)) return activity;
         return activity + " · " + detail;
+    }
+
+    private static int contextLinesPerSide(int heightDp, int currentTextSize) {
+        if (heightDp <= 0) return 1;
+        int sideTextSize = Math.max(11, currentTextSize - 6);
+        int fixedSpaceDp = 118 + Math.max(0, currentTextSize - 19) * 2;
+        int pairHeightDp = Math.max(30, 2 * (sideTextSize + 3));
+        if (heightDp <= fixedSpaceDp) return 0;
+        return Math.max(0, Math.min(6, (heightDp - fixedSpaceDp) / pairHeightDp));
+    }
+
+    private static int automaticVerticalPaddingDp(int heightDp) {
+        if (heightDp <= 0) return 8;
+        return Math.max(4, Math.min(16, Math.round(heightDp * 0.04f)));
+    }
+
+    private static int dpToPx(Context context, int dp) {
+        return Math.round(dp * context.getResources().getDisplayMetrics().density);
     }
 
     private static int progressHeightDimen(int heightDp) {
@@ -435,6 +504,53 @@ final class WidgetState {
 
     private static String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static final class ContextWindow {
+        final String previous;
+        final String next;
+        final int previousLines;
+        final int nextLines;
+
+        private ContextWindow(String previous, String next, int previousLines, int nextLines) {
+            this.previous = previous;
+            this.next = next;
+            this.previousLines = previousLines;
+            this.nextLines = nextLines;
+        }
+
+        static ContextWindow create(String previousContext, String nextContext,
+                                    String previousFallback, String nextFallback, int limit) {
+            if (limit <= 0) return new ContextWindow("", "", 0, 0);
+            List<String> before = splitContext(previousContext, previousFallback);
+            List<String> after = splitContext(nextContext, nextFallback);
+            int previousCount = Math.min(limit, before.size());
+            int nextCount = Math.min(limit, after.size());
+            String previous = joinLines(before, before.size() - previousCount, before.size());
+            String next = joinLines(after, 0, nextCount);
+            return new ContextWindow(previous, next, previousCount, nextCount);
+        }
+
+        private static List<String> splitContext(String context, String fallback) {
+            String source = clean(context);
+            if (source.length() == 0) source = clean(fallback);
+            List<String> lines = new ArrayList<String>();
+            if (source.length() == 0) return lines;
+            for (String raw : source.split("\r?\n")) {
+                String line = clean(raw);
+                if (line.length() != 0) lines.add(line);
+            }
+            return lines;
+        }
+
+        private static String joinLines(List<String> lines, int from, int to) {
+            StringBuilder joined = new StringBuilder();
+            for (int index = from; index < to; index++) {
+                if (joined.length() != 0) joined.append('\n');
+                joined.append(lines.get(index));
+            }
+            return joined.toString();
+        }
     }
 
     // Tracks which flipper child is displayed for each line slot of a widget, so the

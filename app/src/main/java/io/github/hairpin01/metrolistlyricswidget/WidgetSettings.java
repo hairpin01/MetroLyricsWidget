@@ -20,6 +20,11 @@ final class WidgetSettings {
     static final int PROGRESS_COLOR_TRACK = 2;
     static final int PROGRESS_HEIGHT_MIN_DP = 2;
     static final int PROGRESS_HEIGHT_MAX_DP = 8;
+    static final int VERTICAL_PADDING_MIN_DP = 0;
+    static final int VERTICAL_PADDING_MAX_DP = 32;
+    static final int TEXT_ALIGN_START = 0;
+    static final int TEXT_ALIGN_CENTER = 1;
+    static final int TEXT_ALIGN_END = 2;
     static final int KARAOKE_COLOR_ACCENT = 0;
     // Keep 1 for custom so preferences written by previous builds remain valid.
     static final int KARAOKE_COLOR_CUSTOM = 1;
@@ -35,6 +40,10 @@ final class WidgetSettings {
     private static final String KEY_OPACITY = "background_opacity";
     private static final String KEY_DIM = "image_dimming";
     private static final String KEY_TEXT_SIZE = "current_text_size";
+    private static final String KEY_AUTO_VERTICAL_PADDING = "auto_vertical_padding";
+    private static final String KEY_TOP_PADDING_DP = "top_padding_dp";
+    private static final String KEY_BOTTOM_PADDING_DP = "bottom_padding_dp";
+    private static final String KEY_TEXT_ALIGNMENT = "text_alignment";
     private static final String KEY_CUSTOM_SURFACE = "custom_surface";
     private static final String KEY_CUSTOM_FOREGROUND = "custom_foreground";
     private static final String KEY_CUSTOM_ACCENT = "custom_accent";
@@ -105,6 +114,44 @@ final class WidgetSettings {
 
     static void setTextSize(Context context, int value) {
         prefs(context).edit().putInt(KEY_TEXT_SIZE, clamp(value, 15, 27)).apply();
+    }
+
+    static boolean autoVerticalPadding(Context context) {
+        return prefs(context).getBoolean(KEY_AUTO_VERTICAL_PADDING, true);
+    }
+
+    static void setAutoVerticalPadding(Context context, boolean value) {
+        prefs(context).edit().putBoolean(KEY_AUTO_VERTICAL_PADDING, value).apply();
+    }
+
+    static int topPaddingDp(Context context) {
+        return clamp(prefs(context).getInt(KEY_TOP_PADDING_DP, 8),
+                VERTICAL_PADDING_MIN_DP, VERTICAL_PADDING_MAX_DP);
+    }
+
+    static void setTopPaddingDp(Context context, int value) {
+        prefs(context).edit().putInt(KEY_TOP_PADDING_DP,
+                clamp(value, VERTICAL_PADDING_MIN_DP, VERTICAL_PADDING_MAX_DP)).apply();
+    }
+
+    static int bottomPaddingDp(Context context) {
+        return clamp(prefs(context).getInt(KEY_BOTTOM_PADDING_DP, 8),
+                VERTICAL_PADDING_MIN_DP, VERTICAL_PADDING_MAX_DP);
+    }
+
+    static void setBottomPaddingDp(Context context, int value) {
+        prefs(context).edit().putInt(KEY_BOTTOM_PADDING_DP,
+                clamp(value, VERTICAL_PADDING_MIN_DP, VERTICAL_PADDING_MAX_DP)).apply();
+    }
+
+    static int textAlignment(Context context) {
+        return clamp(prefs(context).getInt(KEY_TEXT_ALIGNMENT, TEXT_ALIGN_START),
+                TEXT_ALIGN_START, TEXT_ALIGN_END);
+    }
+
+    static void setTextAlignment(Context context, int value) {
+        prefs(context).edit().putInt(KEY_TEXT_ALIGNMENT,
+                clamp(value, TEXT_ALIGN_START, TEXT_ALIGN_END)).apply();
     }
 
     static int customSurface(Context context) {

@@ -682,6 +682,43 @@ public class MainActivity extends Activity {
                 WidgetSettings.textSize(this),
                 " sp",
                 value -> WidgetSettings.setTextSize(this, value));
+
+        RadioGroup alignment = findViewById(R.id.text_alignment_group);
+        int textAlignment = WidgetSettings.textAlignment(this);
+        alignment.check(textAlignment == WidgetSettings.TEXT_ALIGN_CENTER
+                ? R.id.text_align_center
+                : textAlignment == WidgetSettings.TEXT_ALIGN_END
+                ? R.id.text_align_end : R.id.text_align_start);
+        alignment.setOnCheckedChangeListener((group, checkedId) -> {
+            int value = checkedId == R.id.text_align_center
+                    ? WidgetSettings.TEXT_ALIGN_CENTER
+                    : checkedId == R.id.text_align_end
+                    ? WidgetSettings.TEXT_ALIGN_END : WidgetSettings.TEXT_ALIGN_START;
+            WidgetSettings.setTextAlignment(this, value);
+            refreshWidgets();
+        });
+
+        MaterialSwitch autoPadding = findViewById(R.id.auto_vertical_padding_switch);
+        LinearLayout manualPadding = findViewById(R.id.manual_vertical_padding_container);
+        autoPadding.setChecked(WidgetSettings.autoVerticalPadding(this));
+        manualPadding.setVisibility(autoPadding.isChecked() ? View.GONE : View.VISIBLE);
+        autoPadding.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setAutoVerticalPadding(this, checked);
+            manualPadding.setVisibility(checked ? View.GONE : View.VISIBLE);
+            refreshWidgets();
+        });
+        bindSlider(
+                findViewById(R.id.top_padding_slider),
+                findViewById(R.id.top_padding_value),
+                WidgetSettings.topPaddingDp(this),
+                " dp",
+                value -> WidgetSettings.setTopPaddingDp(this, value));
+        bindSlider(
+                findViewById(R.id.bottom_padding_slider),
+                findViewById(R.id.bottom_padding_value),
+                WidgetSettings.bottomPaddingDp(this),
+                " dp",
+                value -> WidgetSettings.setBottomPaddingDp(this, value));
     }
 
     private void bindSlider(Slider slider, TextView valueLabel, int value,
@@ -725,7 +762,7 @@ public class MainActivity extends Activity {
     private void confirmReset() {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Сбросить оформление?")
-                .setMessage("Цвета, фон, караоке, анимации и размер текста вернутся к значениям по умолчанию.")
+                .setMessage("Цвета, фон, компоновка, караоке, анимации и размер текста вернутся к значениям по умолчанию.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сбросить", (dialog, which) -> {
                     WidgetSettings.reset(this);
@@ -806,8 +843,12 @@ public class MainActivity extends Activity {
         intent.putExtra(Constants.EXTRA_ARTIST, "демо");
         intent.putExtra(Constants.EXTRA_ARTWORK, "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
         intent.putExtra(Constants.EXTRA_PREVIOUS, "Предыдущая строка ближе");
+        intent.putExtra(Constants.EXTRA_PREVIOUS_CONTEXT,
+                "Самая ранняя строка\nЕщё одна строка выше\nПредыдущая строка ближе");
         intent.putExtra(Constants.EXTRA_CURRENT, "Демо караоке по слогам");
         intent.putExtra(Constants.EXTRA_NEXT, "Следующая тоже рядом");
+        intent.putExtra(Constants.EXTRA_NEXT_CONTEXT,
+                "Следующая тоже рядом\nЕщё одна строка ниже\nСамая поздняя строка");
         intent.putExtra(Constants.EXTRA_HIGHLIGHT_END, 12);
         intent.putExtra(Constants.EXTRA_ACTIVE_START, 5);
         intent.putExtra(Constants.EXTRA_ACTIVE_END, 12);

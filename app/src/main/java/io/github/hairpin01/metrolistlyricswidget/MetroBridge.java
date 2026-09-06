@@ -29,6 +29,7 @@ import de.robv.android.xposed.XposedHelpers;
 
 final class MetroBridge implements Runnable {
     private static final Map<Object, MetroBridge> ACTIVE = new WeakHashMap<Object, MetroBridge>();
+    private static final int CONTEXT_LINE_LIMIT = 6;
 
     static void attach(Object service, ClassLoader classLoader) {
         if (!(service instanceof Context)) return;
@@ -74,8 +75,10 @@ final class MetroBridge implements Runnable {
     private String currentArtist = "";
     private String currentArtwork = "";
     private String currentPrevious = "";
+    private String currentPreviousContext = "";
     private String currentLineText = "";
     private String currentNextText = "";
+    private String currentNextContext = "";
     private String lastPayload = "";
     private boolean dbErrorLogged;
 
@@ -483,9 +486,12 @@ final class MetroBridge implements Runnable {
         String status = playing ? "играет" : "пауза";
         if (lyricProvider.length() != 0) status += " · " + lyricProvider;
 
+        String previousContext = contextBefore(lines, index, CONTEXT_LINE_LIMIT);
+        String nextContext = contextAfter(lines, index, CONTEXT_LINE_LIMIT);
         KaraokeFrame frame = KaraokeFrame.at(currentLine, effectivePosition);
-        sendSnapshot(previous, current, next, status, lyricProvider, playing,
-                positionMs, durationMs, frame.highlightEnd, frame.activeStart, frame.activeEnd,
+        sendSnapshot(previous, current, next, previousContext, nextContext,
+                status, lyricProvider, playing, positionMs, durationMs, frame.highlightEnd,
+                frame.activeStart, frame.activeEnd,
                 currentLine != null && !currentLine.tokens.isEmpty(), force);
 
         if (!playing) return 700L;
@@ -499,13 +505,43 @@ final class MetroBridge implements Runnable {
         return Math.max(35L, Math.min(220L, untilBoundary));
     }
 
+    private static String contextBefore(List<LyricLine> lines, int index, int limit) {
+        List<String> context = new ArrayList<String>();
+        for (int i = Math.min(index - 1, lines.size() - 1);
+             i >= 0 && context.size() < limit; i--) {
+            String text = lines.get(i).text == null ? "" : lines.get(i).text.trim();
+            if (text.length() != 0) context.add(0, text);
+        }
+        return joinContext(context);
+    }
+
+    private static String contextAfter(List<LyricLine> lines, int index, int limit) {
+        List<String> context = new ArrayList<String>();
+        for (int i = Math.max(0, index + 1);
+             i < lines.size() && context.size() < limit; i++) {
+            String text = lines.get(i).text == null ? "" : lines.get(i).text.trim();
+            if (text.length() != 0) context.add(text);
+        }
+        return joinContext(context);
+    }
+
+    private static String joinContext(List<String> lines) {
+        StringBuilder joined = new StringBuilder();
+        for (String line : lines) {
+            if (joined.length() != 0) joined.append('\n');
+            joined.append(line);
+        }
+        return joined.toString();
+    }
+
     // Periodic snapshot for tracks without synced lyrics: keeps the progress bar
     // and status fresh roughly once per second while text stays unchanged.
     private void emitHeartbeat(long positionMs, long durationMs, boolean playing) {
         String status = playing ? "играет" : "пауза";
         if (lyricProvider.length() != 0) status += " · " + lyricProvider;
-        sendSnapshot(currentPrevious, currentLineText, currentNextText, status, lyricProvider,
-                playing, positionMs, durationMs, false);
+        sendSnapshot(currentPrevious, currentLineText, currentNextText,
+                currentPreviousContext, currentNextContext, status, lyricProvider, playing,
+                positionMs, durationMs, -1, -1, -1, false, false);
     }
 
     private void sendIdle(String status) {
@@ -542,18 +578,42 @@ final class MetroBridge implements Runnable {
             boolean karaoke,
             boolean force
     ) {
+        sendSnapshot(previous, current, next, previous, next, status, provider, playing,
+                position, duration, highlightEnd, activeStart, activeEnd, karaoke, force);
+    }
+
+    private void sendSnapshot(
+            String previous,
+            String current,
+            String next,
+            String previousContext,
+            String nextContext,
+            String status,
+            String provider,
+            boolean playing,
+            long position,
+            long duration,
+            int highlightEnd,
+            int activeStart,
+            int activeEnd,
+            boolean karaoke,
+            boolean force
+    ) {
         // Position must not be fully deduplicated: the widget progress bar is driven
         // by these snapshots, so the payload carries a one-second quantized position
         // to broadcast roughly once per second while everything else stays unchanged.
         String payload = currentTrackId + '\u0001' + currentTitle + '\u0001' + currentArtist + '\u0001' + currentArtwork + '\u0001' +
-                previous + '\u0001' + current + '\u0001' + next + '\u0001' + status + '\u0001' + provider + '\u0001' + playing +
+                previous + '\u0001' + current + '\u0001' + next + '\u0001' + previousContext + '\u0001' +
+                nextContext + '\u0001' + status + '\u0001' + provider + '\u0001' + playing +
                 '\u0001' + highlightEnd + '\u0001' + activeStart + '\u0001' + activeEnd +
                 '\u0001' + karaoke + '\u0001' + (position / 1000L);
         if (!force && payload.equals(lastPayload)) return;
         lastPayload = payload;
         currentPrevious = previous;
+        currentPreviousContext = previousContext;
         currentLineText = current;
         currentNextText = next;
+        currentNextContext = nextContext;
         try {
             Intent intent = new Intent(Constants.ACTION_UPDATE);
             intent.setComponent(new ComponentName(
@@ -566,8 +626,10 @@ final class MetroBridge implements Runnable {
             intent.putExtra(Constants.EXTRA_ARTIST, currentArtist);
             intent.putExtra(Constants.EXTRA_ARTWORK, currentArtwork);
             intent.putExtra(Constants.EXTRA_PREVIOUS, previous);
+            intent.putExtra(Constants.EXTRA_PREVIOUS_CONTEXT, previousContext);
             intent.putExtra(Constants.EXTRA_CURRENT, current);
             intent.putExtra(Constants.EXTRA_NEXT, next);
+            intent.putExtra(Constants.EXTRA_NEXT_CONTEXT, nextContext);
             intent.putExtra(Constants.EXTRA_STATUS, status);
             intent.putExtra(Constants.EXTRA_PROVIDER, provider);
             intent.putExtra(Constants.EXTRA_PLAYING, playing);

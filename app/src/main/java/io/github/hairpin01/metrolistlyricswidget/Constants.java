@@ -14,8 +14,10 @@ public final class Constants {
     public static final String EXTRA_TITLE = "title";
     public static final String EXTRA_ARTIST = "artist";
     public static final String EXTRA_PREVIOUS = "previous";
+    public static final String EXTRA_PREVIOUS_CONTEXT = "previous_context";
     public static final String EXTRA_CURRENT = "current";
     public static final String EXTRA_NEXT = "next";
+    public static final String EXTRA_NEXT_CONTEXT = "next_context";
     public static final String EXTRA_STATUS = "status";
     public static final String EXTRA_PROVIDER = "provider";
     public static final String EXTRA_ARTWORK = "artwork";
