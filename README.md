@@ -15,6 +15,15 @@ The widget displays the current lyrics directly in the system interface, providi
 ![preview_4x1](assets/preview-4x1.gif)
 ![preview_3x1](assets/preview-3x1.gif)
 
+### Karaoke demonstration
+The highlight follows LyricsPlus word and syllable timestamps directly on the home screen.
+
+<p align="center">
+  <img src="assets/karaoke-demo.webp" width="760" alt="LyricsPlus word and syllable karaoke highlighting in the MetroLyrics widget" />
+</p>
+
+To preview the styling without waiting for a compatible track, open **MetroLyrics** and press **Демо (Demo)**. Highlight color, unsung-text opacity, trail highlighting, bold active text, and the active-syllable pop are configurable in the **Karaoke** section.
+
 ## Requirements
 
 - Android 14 or newer (API 34+).
