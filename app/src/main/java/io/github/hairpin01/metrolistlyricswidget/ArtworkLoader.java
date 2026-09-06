@@ -79,8 +79,19 @@ final class ArtworkLoader {
                         artworkMemoryKey = renderedKey;
                         artworkMemoryBitmap = bitmap;
                     }
+                    return bitmap;
                 }
-                return bitmap;
+                // A broken cache entry must not block all later download attempts.
+                file.delete();
+            }
+            // Do not blank the widget while the next track artwork is downloading.
+            // fitXY will adapt the previous rendered bitmap until the exact one arrives.
+            if (key.length() != 0) {
+                synchronized (ArtworkLoader.class) {
+                    if (artworkMemoryBitmap != null && !artworkMemoryBitmap.isRecycled()) {
+                        return artworkMemoryBitmap;
+                    }
+                }
             }
         }
         return null;
@@ -96,17 +107,27 @@ final class ArtworkLoader {
                     && !coverMemoryBitmap.isRecycled()) return coverMemoryBitmap;
         }
         File file = artworkFile(context, key);
-        if (file == null || !file.isFile()) return null;
-        Bitmap square = decode(file, new Crop() {
-            @Override public Bitmap apply(Bitmap source) { return cropSquare(source); }
-        });
-        if (square != null) {
-            synchronized (ArtworkLoader.class) {
-                coverMemoryKey = key;
-                coverMemoryBitmap = square;
+        if (file != null && file.isFile()) {
+            Bitmap square = decode(file, new Crop() {
+                @Override public Bitmap apply(Bitmap source) { return cropSquare(source); }
+            });
+            if (square != null) {
+                synchronized (ArtworkLoader.class) {
+                    coverMemoryKey = key;
+                    coverMemoryBitmap = square;
+                }
+                return square;
+            }
+            file.delete();
+        }
+        // Keep the previous cover visible during a track transition. The exact cover
+        // replaces it from the completion callback as soon as its file is ready.
+        synchronized (ArtworkLoader.class) {
+            if (coverMemoryBitmap != null && !coverMemoryBitmap.isRecycled()) {
+                return coverMemoryBitmap;
             }
         }
-        return square;
+        return null;
     }
 
     private interface Crop {
@@ -160,37 +181,58 @@ final class ArtworkLoader {
         return result;
     }
 
-    static void ensureAsync(Context context, String trackId, String artworkUrl, Runnable finished) {
+    // Returns true only when this call owns a new asynchronous download. Callers
+    // may use that signal to keep a BroadcastReceiver.PendingResult alive until the
+    // completion callback has refreshed RemoteViews.
+    static boolean ensureAsync(Context context, String trackId, String artworkUrl, Runnable finished) {
         final Context app = context.getApplicationContext();
         final String key = cacheKey(trackId, artworkUrl);
         final String url = usableUrl(artworkUrl, trackId);
+        final String fallbackUrl = youtubeArtworkUrl(trackId);
         final File target = artworkFile(app, key);
-        if (key.length() == 0 || url.length() == 0 || target == null || target.isFile()) return;
-
+        if (key.length() == 0 || url.length() == 0 || target == null || target.isFile()) return false;
         Long retryAt = RETRY_AFTER.get(key);
-        if (retryAt != null && System.currentTimeMillis() < retryAt.longValue()) return;
-        if (!RUNNING.add(key)) return;
-
-        EXECUTOR.execute(new Runnable() {
-            @Override public void run() {
-                boolean success = false;
-                try {
-                    download(url, target);
-                    success = target.isFile();
-                } catch (Throwable ignored) {
-                } finally {
-                    RUNNING.remove(key);
-                    if (success) {
-                        RETRY_AFTER.remove(key);
-                        if (finished != null) finished.run();
-                    } else {
-                        RETRY_AFTER.put(key, System.currentTimeMillis() + 5L * 60L * 1000L);
+        if (retryAt != null && System.currentTimeMillis() < retryAt.longValue()) return false;
+        if (!RUNNING.add(key)) return false;
+        try {
+            EXECUTOR.execute(new Runnable() {
+                @Override public void run() {
+                    boolean success = false;
+                    try {
+                        try {
+                            download(url, target);
+                        } catch (Throwable ignored) {
+                        }
+                        success = target.isFile();
+                        // Thumbnail links may expire. A YouTube media id gives us a
+                        // stable fallback instead of leaving the new track blank.
+                        if (!success && fallbackUrl.length() != 0 && !fallbackUrl.equals(url)) {
+                            try {
+                                download(fallbackUrl, target);
+                            } catch (Throwable ignored) {
+                            }
+                            success = target.isFile();
+                        }
+                    } finally {
+                        RUNNING.remove(key);
+                        if (success) {
+                            RETRY_AFTER.remove(key);
+                        } else {
+                            RETRY_AFTER.put(key, System.currentTimeMillis() + 60L * 1000L);
+                        }
+                        // Always release a pending broadcast, including on failure.
+                        if (finished != null) {
+                            try { finished.run(); } catch (Throwable ignored) {}
+                        }
                     }
                 }
-            }
-        });
+            });
+            return true;
+        } catch (Throwable ignored) {
+            RUNNING.remove(key);
+            return false;
+        }
     }
-
     private static Bitmap customImage(Context context, String uriString, int width, int height,
                                       float radiusX, float radiusY) {
         if (uriString == null || uriString.length() == 0) return null;
@@ -331,15 +373,26 @@ final class ArtworkLoader {
     private static void trimCache(File dir, File keep) {
         if (dir == null) return;
         File[] files = dir.listFiles();
-        if (files == null || files.length <= 8) return;
+        final int maxFiles = 24;
+        if (files == null || files.length <= maxFiles) return;
+        java.util.Arrays.sort(files, new java.util.Comparator<File>() {
+            @Override public int compare(File left, File right) {
+                return Long.compare(left.lastModified(), right.lastModified());
+            }
+        });
+        int remaining = files.length;
         for (File file : files) {
-            if (!file.equals(keep) && file.isFile()) file.delete();
+            if (remaining <= maxFiles) break;
+            if (!file.equals(keep) && file.isFile() && file.delete()) remaining--;
         }
     }
 
     private static String usableUrl(String explicit, String trackId) {
         String value = explicit == null ? "" : explicit.trim();
         if (value.startsWith("https://") || value.startsWith("http://")) return value;
+        return youtubeArtworkUrl(trackId);
+    }
+    private static String youtubeArtworkUrl(String trackId) {
         String id = youtubeId(trackId);
         return id.length() == 0 ? "" : "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg";
     }

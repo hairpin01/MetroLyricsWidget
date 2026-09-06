@@ -241,9 +241,12 @@ final class WidgetState {
         views.setOnClickPendingIntent(R.id.widget_root, pending);
         manager.updateAppWidget(widgetId, views);
 
+        // Always ask for the exact current-track artwork when an artwork surface is
+        // enabled. ensureAsync is a cheap no-op for cached/running requests; this must
+        // not depend on a non-null bitmap because that bitmap may be the transition
+        // fallback from the previous track.
         if ((trackId.length() != 0 || artwork.length() != 0)
-                && ((showCover && cover == null)
-                || (backgroundMode == WidgetSettings.BACKGROUND_ARTWORK && background == null))) {
+                && (showCover || backgroundMode == WidgetSettings.BACKGROUND_ARTWORK)) {
             final Context app = context.getApplicationContext();
             ArtworkLoader.ensureAsync(app, trackId, artwork, new Runnable() {
                 @Override public void run() {
