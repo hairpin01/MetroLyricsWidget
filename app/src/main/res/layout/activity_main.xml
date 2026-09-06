@@ -377,6 +377,45 @@
                         android:valueTo="90"
                         app:labelBehavior="gone"
                         android:stepSize="1" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="12dp"
+                        android:background="?attr/colorOutlineVariant" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:text="Элементы виджета"
+                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                        android:textColor="?attr/colorOnSurface" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/show_cover_switch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="52dp"
+                        android:text="Показывать обложку"
+                        android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/show_progress_switch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="52dp"
+                        android:text="Показывать прогресс"
+                        android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/animate_lines_switch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="52dp"
+                        android:text="Анимация смены строк"
+                        android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

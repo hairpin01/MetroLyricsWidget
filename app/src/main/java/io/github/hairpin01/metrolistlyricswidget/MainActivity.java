@@ -19,6 +19,7 @@ import android.widget.TextView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -47,6 +48,7 @@ public class MainActivity extends Activity {
         bindHeader();
         bindColorSettings();
         bindBackgroundSettings();
+        bindFeatureSettings();
         bindTextSettings();
         bindActions();
     }
@@ -172,6 +174,29 @@ public class MainActivity extends Activity {
         selectedImage.setText(WidgetSettings.imageUri(this).isEmpty()
                 ? "Изображение ещё не выбрано"
                 : "Изображение выбрано");
+    }
+
+    private void bindFeatureSettings() {
+        MaterialSwitch showCover = findViewById(R.id.show_cover_switch);
+        MaterialSwitch showProgress = findViewById(R.id.show_progress_switch);
+        MaterialSwitch animateLines = findViewById(R.id.animate_lines_switch);
+
+        showCover.setChecked(WidgetSettings.showCover(this));
+        showProgress.setChecked(WidgetSettings.showProgress(this));
+        animateLines.setChecked(WidgetSettings.animateLines(this));
+
+        showCover.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setShowCover(this, checked);
+            refreshWidgets();
+        });
+        showProgress.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setShowProgress(this, checked);
+            refreshWidgets();
+        });
+        animateLines.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setAnimateLines(this, checked);
+            refreshWidgets();
+        });
     }
 
     private void bindTextSettings() {
@@ -302,6 +327,8 @@ public class MainActivity extends Activity {
         intent.putExtra(Constants.EXTRA_STATUS, "играет · демо");
         intent.putExtra(Constants.EXTRA_PROVIDER, "демо");
         intent.putExtra(Constants.EXTRA_PLAYING, true);
+        intent.putExtra(Constants.EXTRA_POSITION, 78_000L);
+        intent.putExtra(Constants.EXTRA_DURATION, 220_000L);
         sendBroadcast(intent);
         showMessage("Демо отправлено в виджет");
     }
