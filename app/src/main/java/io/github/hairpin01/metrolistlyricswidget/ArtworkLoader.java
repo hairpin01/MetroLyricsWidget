@@ -27,8 +27,10 @@ import java.util.concurrent.Executors;
 
 final class ArtworkLoader {
     // Keeps RemoteViews safely below Android's Binder transaction limit.
-    private static final int WIDTH = 480;
-    private static final int HEIGHT = 270;
+    private static final int DEFAULT_BACKGROUND_WIDTH = 480;
+    private static final int DEFAULT_BACKGROUND_HEIGHT = 270;
+    private static final int MAX_BACKGROUND_PIXELS = DEFAULT_BACKGROUND_WIDTH * DEFAULT_BACKGROUND_HEIGHT;
+    private static final int MAX_BACKGROUND_EDGE = 720;
     private static final int COVER_SIZE = 240;
     // Matches the 12dp/52dp ratio used by widget_cover_placeholder.xml so the
     // real artwork and the placeholder read as the same rounded shape.
@@ -47,24 +49,29 @@ final class ArtworkLoader {
 
     private ArtworkLoader() {}
 
-    static Bitmap background(Context context, int mode, String trackId, String artworkUrl) {
+    static Bitmap background(Context context, int mode, String trackId, String artworkUrl,
+                             int widgetWidthDp, int widgetHeightDp) {
+        final int[] target = backgroundSize(widgetWidthDp, widgetHeightDp);
         if (mode == WidgetSettings.BACKGROUND_IMAGE) {
-            return customImage(context, WidgetSettings.imageUri(context));
+            return customImage(context, WidgetSettings.imageUri(context), target[0], target[1]);
         }
         if (mode == WidgetSettings.BACKGROUND_ARTWORK) {
             String key = cacheKey(trackId, artworkUrl);
+            String renderedKey = key + "@" + target[0] + "x" + target[1];
             synchronized (ArtworkLoader.class) {
-                if (key.equals(artworkMemoryKey) && artworkMemoryBitmap != null
+                if (renderedKey.equals(artworkMemoryKey) && artworkMemoryBitmap != null
                         && !artworkMemoryBitmap.isRecycled()) return artworkMemoryBitmap;
             }
             File file = artworkFile(context, key);
             if (file != null && file.isFile()) {
                 Bitmap bitmap = decode(file, new Crop() {
-                    @Override public Bitmap apply(Bitmap source) { return crop(source, WIDTH, HEIGHT); }
+                    @Override public Bitmap apply(Bitmap source) {
+                        return crop(source, target[0], target[1]);
+                    }
                 });
                 if (bitmap != null) {
                     synchronized (ArtworkLoader.class) {
-                        artworkMemoryKey = key;
+                        artworkMemoryKey = renderedKey;
                         artworkMemoryBitmap = bitmap;
                     }
                 }
@@ -179,10 +186,12 @@ final class ArtworkLoader {
         });
     }
 
-    private static Bitmap customImage(Context context, String uriString) {
+    private static Bitmap customImage(Context context, String uriString, int width, int height) {
         if (uriString == null || uriString.length() == 0) return null;
+        String renderedKey = uriString + "@" + width + "x" + height;
         synchronized (ArtworkLoader.class) {
-            if (uriString.equals(customMemoryKey) && customMemoryBitmap != null && !customMemoryBitmap.isRecycled()) {
+            if (renderedKey.equals(customMemoryKey) && customMemoryBitmap != null
+                    && !customMemoryBitmap.isRecycled()) {
                 return customMemoryBitmap;
             }
         }
@@ -190,10 +199,10 @@ final class ArtworkLoader {
         try {
             input = context.getContentResolver().openInputStream(Uri.parse(uriString));
             Bitmap source = BitmapFactory.decodeStream(input);
-            Bitmap result = crop(source, WIDTH, HEIGHT);
+            Bitmap result = crop(source, width, height);
             if (source != null && source != result) source.recycle();
             synchronized (ArtworkLoader.class) {
-                customMemoryKey = uriString;
+                customMemoryKey = renderedKey;
                 customMemoryBitmap = result;
             }
             return result;
@@ -204,12 +213,30 @@ final class ArtworkLoader {
         }
     }
 
+    private static int[] backgroundSize(int widgetWidthDp, int widgetHeightDp) {
+        if (widgetWidthDp <= 0 || widgetHeightDp <= 0) {
+            return new int[]{DEFAULT_BACKGROUND_WIDTH, DEFAULT_BACKGROUND_HEIGHT};
+        }
+        float ratio = widgetWidthDp / (float) widgetHeightDp;
+        ratio = Math.max(0.35f, Math.min(8f, ratio));
+        int width = Math.max(1, Math.round((float) Math.sqrt(MAX_BACKGROUND_PIXELS * ratio)));
+        int height = Math.max(1, Math.round((float) Math.sqrt(MAX_BACKGROUND_PIXELS / ratio)));
+        if (width > MAX_BACKGROUND_EDGE || height > MAX_BACKGROUND_EDGE) {
+            float scale = Math.min(MAX_BACKGROUND_EDGE / (float) width,
+                    MAX_BACKGROUND_EDGE / (float) height);
+            width = Math.max(1, Math.round(width * scale));
+            height = Math.max(1, Math.round(height * scale));
+        }
+        return new int[]{width, height};
+    }
     private static Bitmap crop(Bitmap source, int width, int height) {
         if (source == null || source.getWidth() <= 0 || source.getHeight() <= 0) return null;
         Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(result);
         Path rounded = new Path();
-        rounded.addRoundRect(new RectF(0f, 0f, width, height), 36f, 36f, Path.Direction.CW);
+        float cornerRadius = Math.max(12f, Math.min(width, height) * 0.13f);
+        rounded.addRoundRect(new RectF(0f, 0f, width, height),
+                cornerRadius, cornerRadius, Path.Direction.CW);
         canvas.clipPath(rounded);
         float scale = Math.max(width / (float) source.getWidth(), height / (float) source.getHeight());
         int drawWidth = Math.round(source.getWidth() * scale);
