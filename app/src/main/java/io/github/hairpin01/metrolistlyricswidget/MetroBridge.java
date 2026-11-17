@@ -399,50 +399,8 @@ final class MetroBridge implements Runnable {
         }
     }
     
-    private Object invokeFullGetLyrics(Method method, Object repository, String videoId, String title, String artist, Long duration, Object continuation) {
-        try {
-            Class<?> providerClass = null;
-            try { providerClass = Class.forName("com.metrolist.shared.model.LyricsProvider", false, targetClassLoader); }
-            catch (Throwable ignored) {}
-            Object emptyProviders = providerClass == null ? null
-                    : java.lang.reflect.Array.newInstance(providerClass, 0);
-            Object[] args = new Object[13];
-            args[0] = videoId; args[1] = title; args[2] = artist; args[3] = duration;
-            args[4] = null; // album
-            args[5] = emptyProviders; // preferredProviders
-            args[6] = Boolean.FALSE; // skipCache
-            args[7] = Boolean.FALSE; // isVideoContext
-            args[8] = Boolean.FALSE; // preferVideoProviders
-            args[9] = Boolean.FALSE; // ignoreVideoIdentity
-            args[10] = null; // onLyricsAvailable (suspend -> Continuation-only fn, null unsafe)
-            args[11] = continuation;
-            // suspend lambda param: pass null only if Kotlin accepts; safer to fail and log
-            method.setAccessible(true);
-            return method.invoke(repository, args);
-        } catch (Throwable error) {
-            log("full getLyrics invocation failed: " + error);
-            return null;
-        }
-    }
-    private Object resolveLyricsRepository() {
-        try {
-            Class<?> koinComponentClass = Class.forName("org.koin.core.component.KoinComponent", false, targetClassLoader);
-            Object koin = XposedHelpers.callMethod(service, "getKoin");
-            if (koin == null) return null;
-            Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
-            return XposedHelpers.callMethod(koin, "get", repoClass);
-        } catch (Throwable error) {
-            try {
-                Class<?> globalCtx = Class.forName("org.koin.core.context.GlobalContext", false, targetClassLoader);
-                Object koin = XposedHelpers.callMethod(globalCtx, "get");
-                Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
-                return XposedHelpers.callMethod(koin, "get", repoClass);
-            } catch (Throwable error2) {
-                log("resolveLyricsRepository failed: " + error2);
-                return null;
-            }
-        }
-    }
+    
+    
     
 
     private Object coroutineSuspendedMarker() {
@@ -871,15 +829,7 @@ final class MetroBridge implements Runnable {
     
     
     
-    private boolean stateFlowBool(Object player, String name, boolean fallback) {
-        try {
-            Object flow = player == null ? null : getField(player, name);
-            Object value = flow == null ? null : call(flow, "getValue");
-            return bool(value, fallback);
-        } catch (Throwable ignored) {
-            return fallback;
-        }
-    }
+    
     
     
     
