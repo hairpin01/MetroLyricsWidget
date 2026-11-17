@@ -380,22 +380,34 @@ final class MetroBridge implements Runnable {
         }
     }
     private Object resolveLyricsRepository() {
+        // MetroList 14 (R8): Koin.get() stripped; resolve via GlobalContext._koin
+        // -> ScopeRegistry.rootScope -> Scope.resolve(ClassReference, null)
         try {
-            Class<?> koinComponentClass = Class.forName("org.koin.core.component.KoinComponent", false, targetClassLoader);
-            Object koin = XposedHelpers.callMethod(service, "getKoin");
-            if (koin == null) return null;
             Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
-            return XposedHelpers.callMethod(koin, "get", repoClass);
-        } catch (Throwable error) {
-            try {
-                Class<?> globalCtx = Class.forName("org.koin.core.context.GlobalContext", false, targetClassLoader);
-                Object koin = XposedHelpers.callMethod(globalCtx, "get");
-                Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
-                return XposedHelpers.callMethod(koin, "get", repoClass);
-            } catch (Throwable error2) {
-                log("resolveLyricsRepository failed: " + error2);
+            Class<?> globalCtx = Class.forName("org.koin.core.context.GlobalContext", false, targetClassLoader);
+            Object koin = XposedHelpers.getStaticObjectField(globalCtx, "_koin");
+            if (koin == null) {
+                Object globalInstance = XposedHelpers.getStaticObjectField(globalCtx, "INSTANCE");
+                koin = XposedHelpers.getObjectField(globalInstance, "_koin");
+            }
+            if (koin == null) {
+                log("resolveLyricsRepository: GlobalContext._koin is null");
                 return null;
             }
+            Object scopeRegistry = XposedHelpers.getObjectField(koin, "scopeRegistry");
+            Object rootScope = XposedHelpers.getObjectField(scopeRegistry, "rootScope");
+            if (rootScope == null) {
+                log("resolveLyricsRepository: rootScope is null");
+                return null;
+            }
+            Class<?> reflectionClass = Class.forName("kotlin.jvm.internal.Reflection", false, targetClassLoader);
+            Object kClass = XposedHelpers.callStaticMethod(reflectionClass, "getOrCreateKotlinClass", repoClass);
+            Object resolved = XposedHelpers.callMethod(rootScope, "resolve", kClass, null);
+            if (resolved != null) log("LyricsRepository resolved via Koin rootScope");
+            return resolved;
+        } catch (Throwable error) {
+            log("resolveLyricsRepository failed: " + error);
+            return null;
         }
     }
     
@@ -464,8 +476,7 @@ final class MetroBridge implements Runnable {
         List<LyricLine> result = new ArrayList<LyricLine>();
         try {
             Class<?> utilsClass = Class.forName("com.metrolist.shared.api.lyrics.LyricsUtils", false, targetClassLoader);
-            Object instance = XposedHelpers.getStaticObjectField(utilsClass, "INSTANCE");
-            Object parsed = XposedHelpers.callMethod(instance, "parseLyrics", rawLyrics);
+            Object parsed = XposedHelpers.callStaticMethod(utilsClass, "parseLyrics", rawLyrics);
             if (parsed instanceof Iterable) {
                 for (Object entry : (Iterable<?>) parsed) {
                     long time = number(read(entry, "time", "getTime"), -1L);
