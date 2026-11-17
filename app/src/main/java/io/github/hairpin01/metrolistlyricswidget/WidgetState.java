@@ -264,22 +264,47 @@ final class WidgetState {
 
         // Album cover next to the lyrics: placeholder while loading, bitmap when cached.
         boolean showCover = WidgetSettings.showCover(context) && trackId.length() != 0;
-        boolean coverAtBottom = WidgetSettings.coverAtBottom(context);
         Bitmap cover = showCover ? ArtworkLoader.cover(context, trackId, artwork) : null;
-        // Two cover slots: top header row and bottom row next to the progress bar.
-        // Only the configured one becomes VISIBLE; the other one stays GONE so the
-        // title / progress bar use the full width with no leftover indent.
-        int activeCoverId = coverAtBottom ? R.id.widget_cover_bottom : R.id.widget_cover_top;
-        int hiddenCoverId = coverAtBottom ? R.id.widget_cover_top : R.id.widget_cover_bottom;
-        views.setViewVisibility(activeCoverId, showCover ? View.VISIBLE : View.GONE);
-        views.setViewVisibility(hiddenCoverId, View.GONE);
-        if (showCover) {
+        // Four cover slots: top header row, bottom row next to the progress bar,
+        // and left / right side slots centered vertically beside the text column.
+        // Only the configured one becomes VISIBLE; the others stay GONE.
+        int coverPosition = WidgetSettings.coverPosition(context);
+        // Compact widgets (1x4, no context lines) cannot afford a 52dp cover
+        // inside a horizontal row — it would inflate the row height and squash
+        // the weighted lyrics container. Route the cover to the side slot,
+        // centered vertically with margins, like the pre-01cf7f1 layout.
+        int activeCoverId;
+        switch (coverPosition) {
+            case WidgetSettings.COVER_BOTTOM:
+                activeCoverId = compact
+                        ? R.id.widget_cover_left : R.id.widget_cover_bottom;
+                break;
+            case WidgetSettings.COVER_LEFT:
+                activeCoverId = R.id.widget_cover_left;
+                break;
+            case WidgetSettings.COVER_RIGHT:
+                activeCoverId = R.id.widget_cover_right;
+                break;
+            default:
+                activeCoverId = compact ? R.id.widget_cover_left : R.id.widget_cover_top;
+                break;
+        }
+        if (!showCover) activeCoverId = 0;
+        int[] coverSlotIds = {R.id.widget_cover_top, R.id.widget_cover_bottom,
+                R.id.widget_cover_left, R.id.widget_cover_right};
+        for (int slotId : coverSlotIds) {
+            views.setViewVisibility(slotId,
+                    showCover && slotId == activeCoverId ? View.VISIBLE : View.GONE);
+            if (showCover && slotId != activeCoverId) {
+                views.setImageViewResource(slotId, R.drawable.widget_cover_placeholder);
+            }
+        }
+        if (showCover && activeCoverId != 0) {
             if (cover != null) {
                 views.setImageViewBitmap(activeCoverId, cover);
             } else {
                 views.setImageViewResource(activeCoverId, R.drawable.widget_cover_placeholder);
             }
-            views.setImageViewResource(hiddenCoverId, R.drawable.widget_cover_placeholder);
             // Narrow widgets cannot afford a 52dp cover next to the lyrics.
             views.setViewLayoutHeightDimen(activeCoverId,
                     narrow ? R.dimen.widget_cover_size_compact : R.dimen.widget_cover_size);
@@ -293,8 +318,10 @@ final class WidgetState {
         views.setViewVisibility(R.id.widget_progress_wrap, showProgress ? View.VISIBLE : View.GONE);
         // The bottom row takes space only when progress bar or bottom cover shows;
         // otherwise it is fully collapsed — no empty margin under the lyrics.
+        boolean coverInBottomRow = showCover && !compact
+                && WidgetSettings.coverPosition(context) == WidgetSettings.COVER_BOTTOM;
         views.setViewVisibility(R.id.widget_bottom_row,
-                (showProgress || (showCover && coverAtBottom)) ? View.VISIBLE : View.GONE);
+                (showProgress || coverInBottomRow) ? View.VISIBLE : View.GONE);
         if (showProgress) {
             long elapsed = position;
             if (playing) elapsed += Math.max(0L, System.currentTimeMillis() - updatedAt);

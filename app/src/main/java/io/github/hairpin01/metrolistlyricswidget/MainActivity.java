@@ -83,6 +83,8 @@ public class MainActivity extends Activity {
     private ImageView homeWidgetScrim;
     private ImageView homeWidgetCover;
     private ImageView homeWidgetCoverBottom;
+    private ImageView homeWidgetCoverLeft;
+    private ImageView homeWidgetCoverRight;
     private ImageView homeWidgetProgress;
     private ImageView homeWidgetProgressTrack;
     private TextView homeDemoBadge;
@@ -117,6 +119,7 @@ public class MainActivity extends Activity {
     private RadioGroup karaokeHighlightModeGroup;
     private LinearLayout customColorsContainer;
     private LinearLayout progressControlsContainer;
+    private LinearLayout coverPositionContainer;
     private LinearLayout progressCustomColorContainer;
     private LinearLayout karaokeControlsContainer;
     private LinearLayout karaokeCustomColorContainer;
@@ -276,6 +279,8 @@ public class MainActivity extends Activity {
         homeWidgetScrim = findViewById(R.id.widget_scrim);
         homeWidgetCover = findViewById(R.id.widget_cover_top);
         homeWidgetCoverBottom = findViewById(R.id.widget_cover_bottom);
+        homeWidgetCoverLeft = findViewById(R.id.widget_cover_left);
+        homeWidgetCoverRight = findViewById(R.id.widget_cover_right);
         homeWidgetTitle = findViewById(R.id.widget_title);
         homeWidgetStatus = findViewById(R.id.widget_status);
         homeWidgetPrevious = findViewById(R.id.widget_flipper_previous);
@@ -434,11 +439,25 @@ public class MainActivity extends Activity {
                 homeWidgetCurrentA, homeWidgetCurrentB, homeWidgetNextA, homeWidgetNextB);
 
         boolean showCover = WidgetSettings.showCover(this);
-        boolean coverAtBottom = WidgetSettings.coverAtBottom(this);
-        ImageView activeCover = coverAtBottom ? homeWidgetCoverBottom : homeWidgetCover;
-        ImageView hiddenCover = coverAtBottom ? homeWidgetCover : homeWidgetCoverBottom;
-        activeCover.setVisibility(showCover ? View.VISIBLE : View.GONE);
-        hiddenCover.setVisibility(View.GONE);
+        int coverPosition = WidgetSettings.coverPosition(this);
+        ImageView activeCover;
+        if (coverPosition == WidgetSettings.COVER_BOTTOM) {
+            activeCover = homeWidgetCoverBottom;
+        } else if (coverPosition == WidgetSettings.COVER_LEFT) {
+            activeCover = homeWidgetCoverLeft;
+        } else if (coverPosition == WidgetSettings.COVER_RIGHT) {
+            activeCover = homeWidgetCoverRight;
+        } else {
+            activeCover = homeWidgetCover;
+        }
+        homeWidgetCover.setVisibility(
+                activeCover == homeWidgetCover && showCover ? View.VISIBLE : View.GONE);
+        homeWidgetCoverBottom.setVisibility(
+                activeCover == homeWidgetCoverBottom && showCover ? View.VISIBLE : View.GONE);
+        homeWidgetCoverLeft.setVisibility(
+                activeCover == homeWidgetCoverLeft && showCover ? View.VISIBLE : View.GONE);
+        homeWidgetCoverRight.setVisibility(
+                activeCover == homeWidgetCoverRight && showCover ? View.VISIBLE : View.GONE);
         if (showCover) {
             Bitmap cover = ArtworkLoader.cover(this, trackId, artwork);
             if (cover == null) {
@@ -788,9 +807,15 @@ public class MainActivity extends Activity {
         progressColorInput = findViewById(R.id.progress_color_input);
 
         showCover.setChecked(WidgetSettings.showCover(this));
-        MaterialSwitch coverPosition = findViewById(R.id.cover_position_switch);
-        coverPosition.setChecked(WidgetSettings.coverAtBottom(this));
-        coverPosition.setEnabled(showCover.isChecked());
+        RadioGroup coverPositionGroup = findViewById(R.id.cover_position_group);
+        coverPositionContainer = findViewById(R.id.cover_position_container);
+        int coverPosition = WidgetSettings.coverPosition(this);
+        coverPositionGroup.check(coverPosition == WidgetSettings.COVER_BOTTOM
+                ? R.id.cover_position_bottom
+                : coverPosition == WidgetSettings.COVER_LEFT ? R.id.cover_position_left
+                : coverPosition == WidgetSettings.COVER_RIGHT ? R.id.cover_position_right
+                : R.id.cover_position_top);
+        coverPositionContainer.setVisibility(showCover.isChecked() ? View.VISIBLE : View.GONE);
         showProgress.setChecked(WidgetSettings.showProgress(this));
         animateLines.setChecked(WidgetSettings.animateLines(this));
         progressColorInput.setText(hex(WidgetSettings.customProgressColor(this)));
@@ -803,11 +828,16 @@ public class MainActivity extends Activity {
 
         showCover.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setShowCover(this, checked);
-            coverPosition.setEnabled(checked);
+            coverPositionContainer.setVisibility(checked ? View.VISIBLE : View.GONE);
             refreshWidgets();
         });
-        coverPosition.setOnCheckedChangeListener((button, checked) -> {
-            WidgetSettings.setCoverAtBottom(this, checked);
+        coverPositionGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int value = checkedId == R.id.cover_position_bottom
+                    ? WidgetSettings.COVER_BOTTOM
+                    : checkedId == R.id.cover_position_left ? WidgetSettings.COVER_LEFT
+                    : checkedId == R.id.cover_position_right ? WidgetSettings.COVER_RIGHT
+                    : WidgetSettings.COVER_TOP;
+            WidgetSettings.setCoverPosition(this, value);
             refreshWidgets();
         });
         showProgress.setOnCheckedChangeListener((button, checked) -> {

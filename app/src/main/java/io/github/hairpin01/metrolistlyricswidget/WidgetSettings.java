@@ -49,7 +49,7 @@ final class WidgetSettings {
     private static final String KEY_CUSTOM_ACCENT = "custom_accent";
     private static final String KEY_IMAGE_URI = "custom_image_uri";
     private static final String KEY_SHOW_COVER = "show_cover";
-    private static final String KEY_COVER_POSITION = "cover_position";
+    private static final String KEY_COVER_POSITION = "cover_position_v2";
     private static final String KEY_SHOW_PROGRESS = "show_progress";
     private static final String KEY_PROGRESS_COLOR_MODE = "progress_color_mode";
     private static final String KEY_PROGRESS_CUSTOM_COLOR = "progress_custom_color";
@@ -191,14 +191,21 @@ final class WidgetSettings {
     static void setShowCover(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_SHOW_COVER, value).apply();
     }
-    // Where the album cover sits: true = bottom row next to the progress bar,
-    // false (default) = top next to the track title. The unused slot is GONE,
-    // so the title / progress bar take the full width without an empty indent.
-    static boolean coverAtBottom(Context context) {
-        return prefs(context).getBoolean(KEY_COVER_POSITION, false);
+    // Where the album cover sits: COVER_TOP (default) in the header row next to
+    // the title, COVER_BOTTOM in the bottom row next to the progress bar,
+    // COVER_LEFT / COVER_RIGHT centered vertically beside the text column.
+    // Unused slots are GONE so no leftover indent appears.
+    static final int COVER_TOP = 0;
+    static final int COVER_BOTTOM = 1;
+    static final int COVER_LEFT = 2;
+    static final int COVER_RIGHT = 3;
+    static int coverPosition(Context context) {
+        return clamp(prefs(context).getInt(KEY_COVER_POSITION, COVER_TOP),
+                COVER_TOP, COVER_RIGHT);
     }
-    static void setCoverAtBottom(Context context, boolean value) {
-        prefs(context).edit().putBoolean(KEY_COVER_POSITION, value).apply();
+    static void setCoverPosition(Context context, int value) {
+        prefs(context).edit().putInt(KEY_COVER_POSITION, clamp(value,
+                COVER_TOP, COVER_RIGHT)).apply();
     }
 
     static boolean showProgress(Context context) {

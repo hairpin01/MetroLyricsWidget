@@ -367,14 +367,65 @@
                         android:text="Показывать обложку"
                         android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/cover_position_switch"
+                    <LinearLayout
+                        android:id="@+id/cover_position_container"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:minHeight="52dp"
-                        android:paddingStart="16dp"
-                        android:text="Обложка снизу (у прогресса)"
-                        android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+                        android:orientation="vertical"
+                        android:paddingStart="12dp"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="12dp"
+                        android:visibility="gone">
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Позиция обложки"
+                            android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                            android:textColor="?attr/colorOnSurface" />
+                        <RadioGroup
+                            android:id="@+id/cover_position_group"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:orientation="horizontal">
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/cover_position_top"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:minWidth="0dp"
+                                android:minHeight="44dp"
+                                android:text="Сверху"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/cover_position_bottom"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:minWidth="0dp"
+                                android:minHeight="44dp"
+                                android:text="Снизу"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/cover_position_left"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:minWidth="0dp"
+                                android:minHeight="44dp"
+                                android:text="Слева"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/cover_position_right"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:minWidth="0dp"
+                                android:minHeight="44dp"
+                                android:text="Справа"
+                                android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+                        </RadioGroup>
+                    </LinearLayout>
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/show_progress_switch"
