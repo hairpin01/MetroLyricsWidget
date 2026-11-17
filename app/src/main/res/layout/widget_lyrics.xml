@@ -3,7 +3,6 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
-
     <ImageView
         android:id="@+id/widget_bg"
         android:layout_width="match_parent"
@@ -11,7 +10,6 @@
         android:contentDescription="@null"
         android:scaleType="fitXY"
         android:src="@drawable/widget_panel" />
-
     <ImageView
         android:id="@+id/widget_scrim"
         android:layout_width="match_parent"
@@ -19,204 +17,186 @@
         android:contentDescription="@null"
         android:scaleType="fitXY"
         android:src="@drawable/widget_scrim" />
-
     <LinearLayout
         android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:baselineAligned="false"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:paddingLeft="14dp"
         android:paddingTop="8dp"
         android:paddingRight="14dp"
         android:paddingBottom="8dp">
-
-        <ImageView
-            android:id="@+id/widget_cover"
-            android:layout_width="@dimen/widget_cover_size"
-            android:layout_height="@dimen/widget_cover_size"
-            android:layout_marginRight="12dp"
-            android:contentDescription="@null"
-            android:scaleType="centerCrop"
-            android:src="@drawable/widget_cover_placeholder"
-            android:visibility="gone" />
-
         <LinearLayout
-            android:id="@+id/widget_text_column"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:id="@+id/widget_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <ImageView
+                android:id="@+id/widget_cover_top"
+                android:layout_width="@dimen/widget_cover_size"
+                android:layout_height="@dimen/widget_cover_size"
+                android:layout_marginRight="12dp"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop"
+                android:src="@drawable/widget_cover_placeholder"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="MetroList"
+                android:textColor="#FFD0BCFF"
+                android:textSize="12sp" />
+            <TextView
+                android:id="@+id/widget_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:maxWidth="138dp"
+                android:text="ожидание"
+                android:textColor="#C8FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/widget_lyrics_space"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="vertical">
-
-            <LinearLayout
-                android:id="@+id/widget_header"
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+                <ViewFlipper
+                    android:id="@+id/widget_flipper_previous"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:layout_marginBottom="2dp"
+                    android:inAnimation="@anim/line_in"
+                    android:outAnimation="@anim/line_out">
+                    <TextView
+                        android:id="@+id/widget_previous_a"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:includeFontPadding="false"
+                        android:lineSpacingExtra="0dp"
+                        android:lineSpacingMultiplier="0.94"
+                        android:maxLines="1"
+                        android:text=""
+                        android:textColor="#9EFFFFFF"
+                        android:textSize="13sp" />
+                    <TextView
+                        android:id="@+id/widget_previous_b"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:includeFontPadding="false"
+                        android:lineSpacingExtra="0dp"
+                        android:lineSpacingMultiplier="0.94"
+                        android:maxLines="1"
+                        android:text=""
+                        android:textColor="#9EFFFFFF"
+                        android:textSize="13sp" />
+                </ViewFlipper>
+            </FrameLayout>
+            <ViewFlipper
+                android:id="@+id/widget_flipper_current"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:inAnimation="@anim/line_in"
+                android:outAnimation="@anim/line_out">
 
                 <TextView
-                    android:id="@+id/widget_title"
-                    android:layout_width="0dp"
+                    android:id="@+id/widget_current_a"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:ellipsize="end"
                     android:fontFamily="sans-serif-medium"
                     android:includeFontPadding="false"
-                    android:maxLines="1"
-                    android:text="MetroList"
-                    android:textColor="#FFD0BCFF"
-                    android:textSize="12sp" />
-
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="2"
+                    android:text="Запусти MetroList"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="19sp" />
                 <TextView
-                    android:id="@+id/widget_status"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/widget_current_b"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
                     android:includeFontPadding="false"
-                    android:maxLines="1"
-                    android:maxWidth="138dp"
-                    android:text="ожидание"
-                    android:textColor="#C8FFFFFF"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/widget_lyrics_space"
+                    android:lineSpacingExtra="0dp"
+                    android:lineSpacingMultiplier="0.94"
+                    android:maxLines="2"
+                    android:text=""
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="19sp" />
+            </ViewFlipper>
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <FrameLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1">
-
-                    <ViewFlipper
-                        android:id="@+id/widget_flipper_previous"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="bottom"
-                        android:layout_marginBottom="2dp"
-                        android:inAnimation="@anim/line_in"
-                        android:outAnimation="@anim/line_out">
-
-                        <TextView
-                            android:id="@+id/widget_previous_a"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:includeFontPadding="false"
-                            android:lineSpacingExtra="0dp"
-                            android:lineSpacingMultiplier="0.94"
-                            android:maxLines="1"
-                            android:text=""
-                            android:textColor="#9EFFFFFF"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/widget_previous_b"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:includeFontPadding="false"
-                            android:lineSpacingExtra="0dp"
-                            android:lineSpacingMultiplier="0.94"
-                            android:maxLines="1"
-                            android:text=""
-                            android:textColor="#9EFFFFFF"
-                            android:textSize="13sp" />
-                    </ViewFlipper>
-                </FrameLayout>
-
+                android:layout_weight="1">
                 <ViewFlipper
-                    android:id="@+id/widget_flipper_current"
+                    android:id="@+id/widget_flipper_next"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_gravity="top"
+                    android:layout_marginTop="2dp"
                     android:inAnimation="@anim/line_in"
                     android:outAnimation="@anim/line_out">
-
                     <TextView
-                        android:id="@+id/widget_current_a"
+                        android:id="@+id/widget_next_a"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
-                        android:fontFamily="sans-serif-medium"
                         android:includeFontPadding="false"
                         android:lineSpacingExtra="0dp"
                         android:lineSpacingMultiplier="0.94"
-                        android:maxLines="2"
-                        android:text="Запусти MetroList"
-                        android:textColor="#FFFFFFFF"
-                        android:textSize="19sp" />
-
+                        android:maxLines="1"
+                        android:text="Здесь появится синхронный текст"
+                        android:textColor="#9EFFFFFF"
+                        android:textSize="13sp" />
                     <TextView
-                        android:id="@+id/widget_current_b"
+                        android:id="@+id/widget_next_b"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
-                        android:fontFamily="sans-serif-medium"
                         android:includeFontPadding="false"
                         android:lineSpacingExtra="0dp"
                         android:lineSpacingMultiplier="0.94"
-                        android:maxLines="2"
+                        android:maxLines="1"
                         android:text=""
-                        android:textColor="#FFFFFFFF"
-                        android:textSize="19sp" />
+                        android:textColor="#9EFFFFFF"
+                        android:textSize="13sp" />
                 </ViewFlipper>
-
-                <FrameLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1">
-
-                    <ViewFlipper
-                        android:id="@+id/widget_flipper_next"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="top"
-                        android:layout_marginTop="2dp"
-                        android:inAnimation="@anim/line_in"
-                        android:outAnimation="@anim/line_out">
-
-                        <TextView
-                            android:id="@+id/widget_next_a"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:includeFontPadding="false"
-                            android:lineSpacingExtra="0dp"
-                            android:lineSpacingMultiplier="0.94"
-                            android:maxLines="1"
-                            android:text="Здесь появится синхронный текст"
-                            android:textColor="#9EFFFFFF"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/widget_next_b"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:includeFontPadding="false"
-                            android:lineSpacingExtra="0dp"
-                            android:lineSpacingMultiplier="0.94"
-                            android:maxLines="1"
-                            android:text=""
-                            android:textColor="#9EFFFFFF"
-                            android:textSize="13sp" />
-                    </ViewFlipper>
-                </FrameLayout>
-            </LinearLayout>
-
+            </FrameLayout>
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/widget_bottom_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
             <FrameLayout
                 android:id="@+id/widget_progress_wrap"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_weight="1"
+                android:layout_gravity="bottom"
                 android:visibility="gone">
-
                 <ImageView
                     android:id="@+id/widget_progress_track"
                     android:layout_width="match_parent"
@@ -224,7 +204,6 @@
                     android:contentDescription="@null"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_progress_track" />
-
                 <ImageView
                     android:id="@+id/widget_progress"
                     android:layout_width="match_parent"
@@ -233,6 +212,15 @@
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_progress_bar" />
             </FrameLayout>
+            <ImageView
+                android:id="@+id/widget_cover_bottom"
+                android:layout_width="@dimen/widget_cover_size"
+                android:layout_height="@dimen/widget_cover_size"
+                android:layout_marginLeft="12dp"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop"
+                android:src="@drawable/widget_cover_placeholder"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

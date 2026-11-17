@@ -368,6 +368,15 @@
                         android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/cover_position_switch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="52dp"
+                        android:paddingStart="16dp"
+                        android:text="Обложка снизу (у прогресса)"
+                        android:textAppearance="@style/TextAppearance.Material3.BodyLarge" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/show_progress_switch"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

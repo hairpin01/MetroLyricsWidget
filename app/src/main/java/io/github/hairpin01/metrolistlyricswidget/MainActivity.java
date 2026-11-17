@@ -82,6 +82,7 @@ public class MainActivity extends Activity {
     private ImageView homeWidgetBackground;
     private ImageView homeWidgetScrim;
     private ImageView homeWidgetCover;
+    private ImageView homeWidgetCoverBottom;
     private ImageView homeWidgetProgress;
     private ImageView homeWidgetProgressTrack;
     private TextView homeDemoBadge;
@@ -273,7 +274,8 @@ public class MainActivity extends Activity {
         homeWidgetContent = findViewById(R.id.widget_content);
         homeWidgetBackground = findViewById(R.id.widget_bg);
         homeWidgetScrim = findViewById(R.id.widget_scrim);
-        homeWidgetCover = findViewById(R.id.widget_cover);
+        homeWidgetCover = findViewById(R.id.widget_cover_top);
+        homeWidgetCoverBottom = findViewById(R.id.widget_cover_bottom);
         homeWidgetTitle = findViewById(R.id.widget_title);
         homeWidgetStatus = findViewById(R.id.widget_status);
         homeWidgetPrevious = findViewById(R.id.widget_flipper_previous);
@@ -432,13 +434,17 @@ public class MainActivity extends Activity {
                 homeWidgetCurrentA, homeWidgetCurrentB, homeWidgetNextA, homeWidgetNextB);
 
         boolean showCover = WidgetSettings.showCover(this);
-        homeWidgetCover.setVisibility(showCover ? View.VISIBLE : View.GONE);
+        boolean coverAtBottom = WidgetSettings.coverAtBottom(this);
+        ImageView activeCover = coverAtBottom ? homeWidgetCoverBottom : homeWidgetCover;
+        ImageView hiddenCover = coverAtBottom ? homeWidgetCover : homeWidgetCoverBottom;
+        activeCover.setVisibility(showCover ? View.VISIBLE : View.GONE);
+        hiddenCover.setVisibility(View.GONE);
         if (showCover) {
             Bitmap cover = ArtworkLoader.cover(this, trackId, artwork);
             if (cover == null) {
-                homeWidgetCover.setImageResource(R.drawable.ic_launcher);
+                activeCover.setImageResource(R.drawable.ic_launcher);
             } else {
-                homeWidgetCover.setImageBitmap(cover);
+                activeCover.setImageBitmap(cover);
             }
         }
 
@@ -782,6 +788,9 @@ public class MainActivity extends Activity {
         progressColorInput = findViewById(R.id.progress_color_input);
 
         showCover.setChecked(WidgetSettings.showCover(this));
+        MaterialSwitch coverPosition = findViewById(R.id.cover_position_switch);
+        coverPosition.setChecked(WidgetSettings.coverAtBottom(this));
+        coverPosition.setEnabled(showCover.isChecked());
         showProgress.setChecked(WidgetSettings.showProgress(this));
         animateLines.setChecked(WidgetSettings.animateLines(this));
         progressColorInput.setText(hex(WidgetSettings.customProgressColor(this)));
@@ -794,6 +803,11 @@ public class MainActivity extends Activity {
 
         showCover.setOnCheckedChangeListener((button, checked) -> {
             WidgetSettings.setShowCover(this, checked);
+            coverPosition.setEnabled(checked);
+            refreshWidgets();
+        });
+        coverPosition.setOnCheckedChangeListener((button, checked) -> {
+            WidgetSettings.setCoverAtBottom(this, checked);
             refreshWidgets();
         });
         showProgress.setOnCheckedChangeListener((button, checked) -> {

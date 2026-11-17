@@ -49,6 +49,7 @@ final class WidgetSettings {
     private static final String KEY_CUSTOM_ACCENT = "custom_accent";
     private static final String KEY_IMAGE_URI = "custom_image_uri";
     private static final String KEY_SHOW_COVER = "show_cover";
+    private static final String KEY_COVER_POSITION = "cover_position";
     private static final String KEY_SHOW_PROGRESS = "show_progress";
     private static final String KEY_PROGRESS_COLOR_MODE = "progress_color_mode";
     private static final String KEY_PROGRESS_CUSTOM_COLOR = "progress_custom_color";
@@ -189,6 +190,15 @@ final class WidgetSettings {
 
     static void setShowCover(Context context, boolean value) {
         prefs(context).edit().putBoolean(KEY_SHOW_COVER, value).apply();
+    }
+    // Where the album cover sits: true = bottom row next to the progress bar,
+    // false (default) = top next to the track title. The unused slot is GONE,
+    // so the title / progress bar take the full width without an empty indent.
+    static boolean coverAtBottom(Context context) {
+        return prefs(context).getBoolean(KEY_COVER_POSITION, false);
+    }
+    static void setCoverAtBottom(Context context, boolean value) {
+        prefs(context).edit().putBoolean(KEY_COVER_POSITION, value).apply();
     }
 
     static boolean showProgress(Context context) {
