@@ -113,9 +113,8 @@ final class MetroBridge implements Runnable {
                 return;
             }
 
-            Object mediaItem = call(player, "getCurrentMediaItem");
-            String trackId = mediaItemId(mediaItem);
-            boolean playing = bool(call(player, "isPlaying"), false);
+            String trackId = currentSongTrackId(player);
+            boolean playing = stateFlowBool(player, "isPlaying", false);
             nextDelay = playing ? 220L : 700L;
 
             if (trackId.length() == 0) {
@@ -125,9 +124,9 @@ final class MetroBridge implements Runnable {
                 return;
             }
 
-            TrackInfo info = readTrackInfo(mediaItem, trackId);
-            long position = number(call(player, "getCurrentPosition"), 0L);
-            long duration = number(call(player, "getDuration"), 0L);
+            TrackInfo info = readTrackInfo(player, trackId);
+            long position = stateFlowLong(player, "currentPosition", 0L);
+            long duration = stateFlowLong(player, "duration", 0L);
             if (!trackId.equals(currentTrackId)) {
                 beginTrack(trackId, info, playing, position, duration);
             } else {
@@ -221,8 +220,8 @@ final class MetroBridge implements Runnable {
         try {
             Object player = getField(service, "player");
             return new long[]{
-                    number(call(player, "getCurrentPosition"), 0L),
-                    number(call(player, "getDuration"), 0L)
+                    stateFlowLong(player, "currentPosition", 0L),
+                    stateFlowLong(player, "duration", 0L)
             };
         } catch (Throwable ignored) {
             return new long[]{0L, 0L};
@@ -265,14 +264,22 @@ final class MetroBridge implements Runnable {
 
     private void requestLyricsFromMetroList(final String expectedTrackId) {
         try {
-            Object metadataFlow = getField(service, "currentMediaMetadata");
-            Object metadata = metadataFlow == null ? null : call(metadataFlow, "getValue");
-            if (metadata == null) return;
-            String metadataId = string(read(metadata, "id", "getId"));
-            if (metadataId.length() != 0 && !expectedTrackId.equals(metadataId)) return;
-
-            final Object helper = getField(service, "lyricsHelper");
-            if (helper == null) return;
+            Object player = getField(service, "player");
+            Object song = currentSongValue(player);
+            if (song == null) return;
+            String songId = string(read(song, "id", "getId"));
+            if (songId.length() != 0 && !expectedTrackId.equals(songId)) return;
+            String title = string(read(song, "title", "getTitle"));
+            Object artists = read(song, "artists", "getArtists");
+            String artist = artistNames(artists);
+            Long durationRaw = stateFlowLongBox(player, "duration");
+            Long duration = durationRaw == null ? null : durationRaw;
+            Object helper = resolveLyricsRepository();
+            if (helper == null) {
+                log("LyricsRepository not resolved via Koin");
+                return;
+            }
+            final Object repository = helper;
             final Class<?> continuationClass = Class.forName("kotlin.coroutines.Continuation", false, targetClassLoader);
             Class<?> emptyContextClass = Class.forName("kotlin.coroutines.EmptyCoroutineContext", false, targetClassLoader);
             final Object emptyContext = XposedHelpers.getStaticObjectField(emptyContextClass, "INSTANCE");
@@ -297,27 +304,146 @@ final class MetroBridge implements Runnable {
                     }
             );
 
+            // MetroList 14: LyricsRepository.getLyrics(videoId, title, artist, duration?, album?, ...)
+            // $default synthetic keeps defaults: mask 0b11111110_00000000 (defaults for params 5..12)
             Method target = null;
-            for (Method method : helper.getClass().getMethods()) {
-                if ("getLyrics".equals(method.getName()) && method.getParameterTypes().length == 2) {
-                    target = method;
-                    break;
-                }
+            for (Method method : repository.getClass().getMethods()) {
+                if (!"getLyrics$default".equals(method.getName())) continue;
+                Class<?>[] params = method.getParameterTypes();
+                if (params.length == 14) { target = method; break; }
             }
             if (target == null) {
-                log("LyricsHelper.getLyrics continuation method not found");
+                for (Method method : repository.getClass().getMethods()) {
+                    if (!"getLyrics".equals(method.getName())) continue;
+                    Class<?>[] params = method.getParameterTypes();
+                    if (params.length == 13 && params[12] == continuationClass) { target = method; break; }
+                }
+                if (target != null) {
+                    // call full signature with explicit defaults
+                    Object immediate = invokeFullGetLyrics(target, repository, expectedTrackId, title, artist, duration, continuation);
+                    Object suspended = coroutineSuspendedMarker();
+                    if (immediate != null && immediate != suspended) handleFetchResult(expectedTrackId, immediate);
+                    log("requested lyrics through MetroList LyricsRepository (full)");
+                    return;
+                }
+                log("LyricsRepository.getLyrics method not found");
                 return;
             }
+            Object repository2 = repository;
+            Object[] args = new Object[14];
+            args[0] = repository2;
+            args[1] = expectedTrackId;
+            args[2] = title;
+            args[3] = artist;
+            args[4] = duration;
+            args[5] = null;
+            int mask = 0;
+            for (int bit = 4; bit <= 12; bit++) mask |= (1 << bit);
+            Object maskObj = java.lang.reflect.Array.newInstance(int.class, 0).getClass().isArray() ? null : null;
+            Object maskArray = java.lang.reflect.Array.newInstance(int.class, 1);
+            java.lang.reflect.Array.setInt(maskArray, 0, mask);
+            args[12] = maskArray;
+            args[13] = continuation;
             target.setAccessible(true);
-            Object immediate = target.invoke(helper, metadata, continuation);
+            Object immediate = target.invoke(null, args);
             Object suspended = coroutineSuspendedMarker();
             if (immediate != null && immediate != suspended) handleFetchResult(expectedTrackId, immediate);
-            log("requested lyrics through MetroList LyricsHelper");
+            log("requested lyrics through MetroList LyricsRepository");
         } catch (Throwable error) {
             Throwable cause = error.getCause() == null ? error : error.getCause();
-            log("LyricsHelper request failed: " + cause);
+            log("LyricsRepository request failed: " + cause);
         }
     }
+    private Object invokeFullGetLyrics(Method method, Object repository, String videoId, String title, String artist, Long duration, Object continuation) {
+        try {
+            Class<?> providerClass = null;
+            try { providerClass = Class.forName("com.metrolist.shared.model.LyricsProvider", false, targetClassLoader); }
+            catch (Throwable ignored) {}
+            Object emptyProviders = providerClass == null ? null
+                    : java.lang.reflect.Array.newInstance(providerClass, 0);
+            Object[] args = new Object[13];
+            args[0] = videoId; args[1] = title; args[2] = artist; args[3] = duration;
+            args[4] = null; // album
+            args[5] = emptyProviders; // preferredProviders
+            args[6] = Boolean.FALSE; // skipCache
+            args[7] = Boolean.FALSE; // isVideoContext
+            args[8] = Boolean.FALSE; // preferVideoProviders
+            args[9] = Boolean.FALSE; // ignoreVideoIdentity
+            args[10] = null; // onLyricsAvailable (suspend -> Continuation-only fn, null unsafe)
+            args[11] = continuation;
+            // suspend lambda param: pass null only if Kotlin accepts; safer to fail and log
+            method.setAccessible(true);
+            return method.invoke(repository, args);
+        } catch (Throwable error) {
+            log("full getLyrics invocation failed: " + error);
+            return null;
+        }
+    }
+    private Object resolveLyricsRepository() {
+        try {
+            Class<?> koinComponentClass = Class.forName("org.koin.core.component.KoinComponent", false, targetClassLoader);
+            Object koin = XposedHelpers.callMethod(service, "getKoin");
+            if (koin == null) return null;
+            Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
+            return XposedHelpers.callMethod(koin, "get", repoClass);
+        } catch (Throwable error) {
+            try {
+                Class<?> globalCtx = Class.forName("org.koin.core.context.GlobalContext", false, targetClassLoader);
+                Object koin = XposedHelpers.callMethod(globalCtx, "get");
+                Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
+                return XposedHelpers.callMethod(koin, "get", repoClass);
+            } catch (Throwable error2) {
+                log("resolveLyricsRepository failed: " + error2);
+                return null;
+            }
+        }
+    }
+    
+    private Object invokeFullGetLyrics(Method method, Object repository, String videoId, String title, String artist, Long duration, Object continuation) {
+        try {
+            Class<?> providerClass = null;
+            try { providerClass = Class.forName("com.metrolist.shared.model.LyricsProvider", false, targetClassLoader); }
+            catch (Throwable ignored) {}
+            Object emptyProviders = providerClass == null ? null
+                    : java.lang.reflect.Array.newInstance(providerClass, 0);
+            Object[] args = new Object[13];
+            args[0] = videoId; args[1] = title; args[2] = artist; args[3] = duration;
+            args[4] = null; // album
+            args[5] = emptyProviders; // preferredProviders
+            args[6] = Boolean.FALSE; // skipCache
+            args[7] = Boolean.FALSE; // isVideoContext
+            args[8] = Boolean.FALSE; // preferVideoProviders
+            args[9] = Boolean.FALSE; // ignoreVideoIdentity
+            args[10] = null; // onLyricsAvailable (suspend -> Continuation-only fn, null unsafe)
+            args[11] = continuation;
+            // suspend lambda param: pass null only if Kotlin accepts; safer to fail and log
+            method.setAccessible(true);
+            return method.invoke(repository, args);
+        } catch (Throwable error) {
+            log("full getLyrics invocation failed: " + error);
+            return null;
+        }
+    }
+    private Object resolveLyricsRepository() {
+        try {
+            Class<?> koinComponentClass = Class.forName("org.koin.core.component.KoinComponent", false, targetClassLoader);
+            Object koin = XposedHelpers.callMethod(service, "getKoin");
+            if (koin == null) return null;
+            Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
+            return XposedHelpers.callMethod(koin, "get", repoClass);
+        } catch (Throwable error) {
+            try {
+                Class<?> globalCtx = Class.forName("org.koin.core.context.GlobalContext", false, targetClassLoader);
+                Object koin = XposedHelpers.callMethod(globalCtx, "get");
+                Class<?> repoClass = Class.forName("com.metrolist.shared.repository.LyricsRepository", false, targetClassLoader);
+                return XposedHelpers.callMethod(koin, "get", repoClass);
+            } catch (Throwable error2) {
+                log("resolveLyricsRepository failed: " + error2);
+                return null;
+            }
+        }
+    }
+    
 
     private Object coroutineSuspendedMarker() {
         try {
@@ -379,7 +505,7 @@ final class MetroBridge implements Runnable {
     private List<LyricLine> parseUsingMetroList(String rawLyrics) {
         List<LyricLine> result = new ArrayList<LyricLine>();
         try {
-            Class<?> utilsClass = Class.forName("com.metrolist.music.lyrics.LyricsUtils", false, targetClassLoader);
+            Class<?> utilsClass = Class.forName("com.metrolist.shared.api.lyrics.LyricsUtils", false, targetClassLoader);
             Object instance = XposedHelpers.getStaticObjectField(utilsClass, "INSTANCE");
             Object parsed = XposedHelpers.callMethod(instance, "parseLyrics", rawLyrics);
             if (parsed instanceof Iterable) {
@@ -387,7 +513,10 @@ final class MetroBridge implements Runnable {
                     long time = number(read(entry, "time", "getTime"), -1L);
                     String text = LyricsParser.normalizeText(string(read(entry, "text", "getText")));
                     boolean background = bool(read(entry, "isBackground", "isBackground", "getBackground"), false);
-                    if (time >= 0L && text.length() != 0) result.add(new LyricLine(time, text, background));
+                    List<LyricToken> tokens = tokensFromWords(entry);
+                    if (time >= 0L && (text.length() != 0 || !tokens.isEmpty())) {
+                        result.add(new LyricLine(time, text, background, tokens));
+                    }
                 }
             }
         } catch (Throwable error) {
@@ -645,37 +774,117 @@ final class MetroBridge implements Runnable {
         }
     }
 
-    private TrackInfo readTrackInfo(Object mediaItem, String fallbackId) {
+    private TrackInfo readTrackInfo(Object player, String fallbackId) {
         String title = "";
         String artist = "";
         String artwork = "";
         try {
-            Object flow = getField(service, "currentMediaMetadata");
-            Object metadata = flow == null ? null : call(flow, "getValue");
-            if (metadata != null) {
-                String id = string(read(metadata, "id", "getId"));
+            Object song = currentSongValue(player);
+            if (song != null) {
+                String id = string(read(song, "id", "getId"));
                 if (id.length() == 0 || fallbackId.equals(id)) {
-                    title = string(read(metadata, "title", "getTitle"));
-                    Object artists = read(metadata, "artists", "getArtists");
+                    title = string(read(song, "title", "getTitle"));
+                    Object artists = read(song, "artists", "getArtists");
                     artist = artistNames(artists);
-                    artwork = string(read(metadata, "thumbnailUrl", "getThumbnailUrl"));
-                    if (artwork.length() == 0) artwork = string(read(metadata, "artworkUrl", "getArtworkUrl"));
+                    artwork = string(read(song, "thumbnail", "getThumbnail"));
                 }
             }
         } catch (Throwable ignored) {}
-
-        try {
-            Object metadata = read(mediaItem, "mediaMetadata", "getMediaMetadata");
-            if (title.length() == 0) title = string(read(metadata, "title", "getTitle"));
-            if (artist.length() == 0) artist = string(read(metadata, "artist", "getArtist"));
-            if (artwork.length() == 0) artwork = string(read(metadata, "artworkUri", "getArtworkUri"));
-        } catch (Throwable ignored) {}
-
         title = oneLine(title);
         artist = oneLine(artist);
         artwork = oneLine(artwork);
         return new TrackInfo(title, artist, artwork);
     }
+    private Object currentSongValue(Object player) {
+        try {
+            Object flow = player == null ? null : getField(player, "currentSong");
+            return flow == null ? null : call(flow, "getValue");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+    private String currentSongTrackId(Object player) {
+        Object song = currentSongValue(player);
+        if (song == null) return "";
+        return oneLine(string(read(song, "id", "getId")));
+    }
+    private boolean stateFlowBool(Object player, String name, boolean fallback) {
+        try {
+            Object flow = player == null ? null : getField(player, name);
+            Object value = flow == null ? null : call(flow, "getValue");
+            return bool(value, fallback);
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+    private long stateFlowLong(Object player, String name, long fallback) {
+        try {
+            Object flow = player == null ? null : getField(player, name);
+            Object value = flow == null ? null : call(flow, "getValue");
+            return number(value, fallback);
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+    private Long stateFlowLongBox(Object player, String name) {
+        try {
+            Object flow = player == null ? null : getField(player, name);
+            Object value = flow == null ? null : call(flow, "getValue");
+            if (value instanceof Number) return Long.valueOf(((Number) value).longValue());
+            return null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+    private List<LyricToken> tokensFromWords(Object entry) {
+        List<LyricToken> tokens = new ArrayList<LyricToken>();
+        try {
+            Object words = read(entry, "words", "getWords");
+            if (!(words instanceof Iterable)) return tokens;
+            StringBuilder sb = new StringBuilder();
+            int charIndex = 0;
+            List<Object> wordList = new ArrayList<Object>();
+            for (Object w : (Iterable<?>) words) wordList.add(w);
+            long lineStart = -1L;
+            for (int i = 0; i < wordList.size(); i++) {
+                Object w = wordList.get(i);
+                String text = string(read(w, "text", "getText"));
+                double start = doubleValue(read(w, "startTime", "getStartTime"), -1.0);
+                double end = doubleValue(read(w, "endTime", "getEndTime"), -1.0);
+                boolean trailing = bool(read(w, "hasTrailingSpace", "getHasTrailingSpace"), true);
+                boolean bg = bool(read(w, "isBackground", "getIsBackground"), false);
+                if (start < 0 || end < 0 || bg) continue;
+                if (lineStart < 0) lineStart = (long) (start * 1000.0);
+                long startMs = (long) (start * 1000.0);
+                long endMs = (long) (end * 1000.0);
+                String piece = text + (trailing ? " " : "");
+                tokens.add(new LyricToken(text, startMs, endMs, charIndex, charIndex + text.length()));
+                charIndex += piece.length();
+                sb.append(piece);
+            }
+        } catch (Throwable ignored) {}
+        return tokens;
+    }
+    private static double doubleValue(Object value, double fallback) {
+        return value instanceof Number ? ((Number) value).doubleValue() : fallback;
+    }
+    
+    
+    
+    private boolean stateFlowBool(Object player, String name, boolean fallback) {
+        try {
+            Object flow = player == null ? null : getField(player, name);
+            Object value = flow == null ? null : call(flow, "getValue");
+            return bool(value, fallback);
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+    
+    
+    
+    
+    
 
     private String artistNames(Object value) {
         if (!(value instanceof Iterable)) return string(value);
@@ -700,7 +909,7 @@ final class MetroBridge implements Runnable {
     private boolean isPlayerPlaying() {
         try {
             Object player = getField(service, "player");
-            return bool(call(player, "isPlaying"), false);
+            return stateFlowBool(player, "isPlaying", false);
         } catch (Throwable ignored) {
             return false;
         }

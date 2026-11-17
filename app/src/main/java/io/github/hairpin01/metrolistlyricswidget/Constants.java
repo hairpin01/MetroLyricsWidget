@@ -5,7 +5,7 @@ public final class Constants {
 
     public static final String MODULE_PACKAGE = "io.github.hairpin01.metrolistlyricswidget";
     public static final String TARGET_PACKAGE = "com.metrolist.music";
-    public static final String TARGET_SERVICE = "com.metrolist.music.playback.MusicService";
+    public static final String TARGET_SERVICE = "com.metrolist.android.playback.MusicService";
 
     public static final String ACTION_UPDATE = MODULE_PACKAGE + ".UPDATE";
     public static final String ACTION_CLEAR = MODULE_PACKAGE + ".CLEAR";
